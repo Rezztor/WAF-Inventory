@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}WAF Inventory{% endblock %}</title>
+{% include "_style.html" %}
+</head><body>
+<header class="top"><b>WAF Inventory</b>
+<nav aria-label="Main"><a href="/" class="{{ 'on' if not active }}">Overview</a>
+{% for key, (title, _) in pages.items() %}<a href="/t/{{ key }}" class="{{ 'on' if active == key }}">{{ title }}</a>{% endfor %}
+</nav></header>
+<main>{% block body %}{% endblock %}</main>
+</body></html>

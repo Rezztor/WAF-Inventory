@@ -1,0 +1,20 @@
+{% macro badge(v) %}<span class="b {{ v }}">{{ v }}</span>{% endmacro %}
+
+{% macro cell(name, col, row, links=True) -%}
+{%- set v = row[col] -%}
+{%- if col in ("mode", "severity", "status", "confirmed", "bot", "waf_capable") and v not in (None, "") -%}{{ badge(v) }}
+{%- elif links and col == "application" -%}<a href="/apps/{{ v | urlencode }}">{{ v }}</a>
+{%- elif links and col == "host" -%}<a href="/apps/{{ v | urlencode }}">{{ v }}</a>
+{%- elif links and col == "policy" and row.id -%}<a href="/policy/{{ row.id }}">{{ v }}</a>
+{%- elif col in ("template", "paths", "value") -%}<code>{{ v }}</code>
+{%- else -%}{{ "" if v is none else v }}{%- endif -%}
+{%- endmacro %}
+
+{% macro grid(name, rows, links=True) %}
+{% if rows %}
+<div class="tw"><table>
+<thead><tr>{% for c in rows[0] if c != "id" %}<th>{{ c | replace("_", " ") }}</th>{% endfor %}</tr></thead>
+<tbody>{% for r in rows %}<tr>{% for c in r if c != "id" %}<td>{{ cell(name, c, r, links) }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+</table></div>
+{% else %}<p class="muted">Nothing here yet.</p>{% endif %}
+{% endmacro %}

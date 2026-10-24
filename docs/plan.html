@@ -37,12 +37,79 @@ li.task{list-style:none;margin-left:-1.3em} li.task input{margin-right:6px}
 @media (max-width:860px){.wrap{grid-template-columns:minmax(0,1fr);gap:16px;padding:20px 16px}nav{position:static;border-bottom:1px solid var(--line);padding-bottom:12px}}
 </style></head>
 <body><div class="wrap">
-<nav aria-label="Contents"><b>Contents</b><ol><li><a href="#1-goal-scope">1. Goal &amp; scope</a></li><li><a href="#2-architecture">2. Architecture</a></li><li><a href="#3-vendor-neutral-data-model">3. Vendor-neutral data model</a></li><li><a href="#4-azure-waf-connector">4. Azure WAF connector</a></li><li><a href="#5-f5-big-ip-connector">5. F5 BIG-IP connector</a></li><li><a href="#6-api-discovery-engine">6. API discovery engine</a></li><li><a href="#7-findings">7. Findings</a></li><li><a href="#8-dashboard-exports">8. Dashboard &amp; exports</a></li><li><a href="#9-roadmap">9. Roadmap</a></li><li><a href="#10-prerequisites-checklist">10. Prerequisites checklist</a></li><li><a href="#11-risks-open-questions">11. Risks &amp; open questions</a></li><li><a href="#12-sources">12. Sources</a></li></ol></nav>
+<nav aria-label="Contents"><b>Contents</b><ol><li><a href="#0-implementation-status">0. Implementation status</a></li><li><a href="#1-goal-scope">1. Goal &amp; scope</a></li><li><a href="#2-architecture">2. Architecture</a></li><li><a href="#3-vendor-neutral-data-model">3. Vendor-neutral data model</a></li><li><a href="#4-azure-waf-connector">4. Azure WAF connector</a></li><li><a href="#5-f5-big-ip-connector">5. F5 BIG-IP connector</a></li><li><a href="#6-api-discovery-engine">6. API discovery engine</a></li><li><a href="#7-findings">7. Findings</a></li><li><a href="#8-dashboard-exports">8. Dashboard &amp; exports</a></li><li><a href="#9-roadmap">9. Roadmap</a></li><li><a href="#10-prerequisites-checklist">10. Prerequisites checklist</a></li><li><a href="#11-risks-open-questions">11. Risks &amp; open questions</a></li><li><a href="#12-sources">12. Sources</a></li></ol></nav>
 <main><header><h1>WAF Inventory &amp; API Discovery: Plan</h1></header>
 
 <blockquote>
-<p>Status: <strong>Plan / research complete, no code yet</strong> · Last updated: 2026-10-24 · Markdown version: <a href="PLAN.md"><code>docs/PLAN.md</code></a></p>
+<p>Status: <strong>MVP built (phases 0–5)</strong>, see <a href="#0-implementation-status">§0</a> · Last updated: 2026-10-24 · Markdown version: <a href="PLAN.md"><code>docs/PLAN.md</code></a></p>
 </blockquote>
+<h2 id="0-implementation-status">0. Implementation status</h2>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Status</th>
+<th>Where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0: skeleton, data model, CLI, SQLite, fixtures</td>
+<td>Done</td>
+<td><code>src/waf_inventory/models.py</code>, <code>cli.py</code>, <code>examples/</code></td>
+</tr>
+<tr>
+<td>1: Azure config (App Gateway v2 + Front Door Std/Premium, effective policy)</td>
+<td>Done</td>
+<td><code>azure.py</code></td>
+</tr>
+<tr>
+<td>2: F5 REST + offline (<code>bigip.conf</code> / tmsh + ASM declarative export)</td>
+<td>Done</td>
+<td><code>f5.py</code></td>
+</tr>
+<tr>
+<td>3: Log Analytics traffic → discovery → OpenAPI</td>
+<td>Done</td>
+<td><code>azure.py</code> (KQL), <code>discovery.py</code></td>
+</tr>
+<tr>
+<td>4: Dashboard + exports (HTML / JSON / CSV / XLSX / OpenAPI)</td>
+<td>Done</td>
+<td><code>web.py</code>, <code>report.py</code>, <code>templates/</code></td>
+</tr>
+<tr>
+<td>5: Findings</td>
+<td>Done</td>
+<td><code>findings.py</code></td>
+</tr>
+<tr>
+<td>5: Snapshot diffing</td>
+<td><strong>Not yet.</strong> Every policy stores <code>raw</code> + <code>raw_hash</code> so a diff can be added later</td>
+<td></td>
+</tr>
+<tr>
+<td>6: F5 log ingestion over syslog, BIG-IQ, classic Front Door, App Gateway for Containers, cloud WAFs</td>
+<td>Not started. F5 logs can already be loaded as JSONL/CSV via the <code>logs</code> source</td>
+<td></td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Where the build differs from the plan below, and why:</strong></p>
+<ul>
+<li><strong>Azure SDKs replaced by plain ARM REST calls</strong> (<code>httpx</code> + <code>azure-identity</code>), with api-versions pinned in <code>azure.API</code>.<ul>
+<li>This avoids five management SDKs.</li>
+<li>Live collection produces exactly the ARM JSON that the offline <code>azure_bundle</code> source and the tests use.</li>
+<li>The App Gateway, WAF policy and Front Door resources come from per-subscription list calls rather than Resource Graph. This is simpler, and Resource Graph doesn't index the Front Door child resources anyway.</li>
+</ul>
+</li>
+<li><strong><code>argparse</code></strong> instead of Typer, and <strong>server-rendered Jinja pages without HTMX</strong>: plain GET forms do the filtering.</li>
+<li><strong>Normalized policy settings are stored as a JSON column on <code>WafPolicy</code></strong> rather than a <code>PolicySetting</code> table. The <code>policy_settings</code> export still flattens them to one row per setting.</li>
+<li><strong>Applications</strong> are derived from listener hostnames (or address:port) instead of a separate table.</li>
+<li><strong>Effective policy</strong> is the first matching route in evaluation order, with F5 LTM policy rules sorted by <code>ordinal</code> (first-match strategy).</li>
+<li><strong>Log Analytics workspaces</strong> are listed in the config (<code>log_workspaces</code>), not auto-discovered from diagnostic settings.</li>
+<li><strong>Not verified against live tenants or devices.</strong> All live code paths are tested against mock ARM, Log Analytics and iControl REST servers that follow the documented shapes. Before relying on the results, run the first live collection with <code>--save-raw</code> and review it.</li>
+</ul>
 <h2 id="1-goal-scope">1. Goal &amp; scope</h2>
 <p>This is a <strong>read-only</strong> tool. It connects to WAF products and inventories every web app and API published through them. For each app it answers three questions:</p>
 <div class="tw"><table>

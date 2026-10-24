@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WAF Inventory Report</title>
+{% include "_style.html" %}
+</head><body>{% from "_macros.html" import grid %}
+<main>
+<h1>WAF Inventory Report</h1>
+<div class="cards">
+  <div class="card"><div class="n">{{ summary.applications }}</div><div class="l">applications</div></div>
+  <div class="card"><div class="n">{{ summary.coverage }}%</div><div class="l">web listeners in blocking mode</div></div>
+  <div class="card"><div class="n">{{ summary.policies }}</div><div class="l">WAF policies · {{ summary.gateways }} gateways</div></div>
+  <div class="card"><div class="n">{{ summary.api_endpoints }}</div><div class="l">API endpoints ({{ summary.endpoints }} total)</div></div>
+  <div class="card"><div class="n">{{ summary.findings.high }}</div><div class="l">high findings · {{ summary.findings.medium }} medium · {{ summary.findings.low }} low</div></div>
+</div>
+{% for name, rows in sheets.items() %}
+<h2>{{ name | replace("_", " ") | capitalize }} ({{ rows | length }})</h2>
+{{ grid(name, rows, links=False) }}
+{% endfor %}
+</main></body></html>

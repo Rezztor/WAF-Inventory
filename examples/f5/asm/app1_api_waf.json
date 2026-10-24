@@ -1,0 +1,196 @@
+{
+ "policy": {
+  "name": "app1_api_waf",
+  "fullPath": "/Common/app1_api_waf",
+  "description": "app1_api_waf (exported)",
+  "enforcementMode": "blocking",
+  "template": {
+   "name": "POLICY_TEMPLATE_API_SECURITY"
+  },
+  "applicationLanguage": "utf-8",
+  "caseInsensitive": false,
+  "signature-sets": [
+   {
+    "name": "Generic Detection Signatures (High/Medium Accuracy)",
+    "block": true,
+    "alarm": true
+   },
+   {
+    "name": "High Accuracy Signatures",
+    "block": true,
+    "alarm": true
+   }
+  ],
+  "blocking-settings": {
+   "violations": [
+    {
+     "name": "VIOL_ATTACK_SIGNATURE",
+     "alarm": true,
+     "block": true,
+     "description": "Attack signature detected"
+    },
+    {
+     "name": "VIOL_URL",
+     "alarm": true,
+     "block": true,
+     "description": "Illegal URL"
+    },
+    {
+     "name": "VIOL_METHOD",
+     "alarm": true,
+     "block": true,
+     "description": "Illegal method"
+    },
+    {
+     "name": "VIOL_FILETYPE",
+     "alarm": true,
+     "block": true,
+     "description": "Illegal file type"
+    },
+    {
+     "name": "VIOL_PARAMETER",
+     "alarm": true,
+     "block": true,
+     "description": "Illegal parameter"
+    },
+    {
+     "name": "VIOL_EVASION",
+     "alarm": true,
+     "block": true,
+     "description": "Evasion technique detected"
+    },
+    {
+     "name": "VIOL_HTTP_PROTOCOL",
+     "alarm": true,
+     "block": true,
+     "description": "HTTP protocol compliance failed"
+    },
+    {
+     "name": "VIOL_JSON_MALFORMED",
+     "alarm": true,
+     "block": true,
+     "description": "Malformed JSON data"
+    }
+   ]
+  },
+  "signature-settings": {
+   "signatureStaging": false
+  },
+  "urls": [
+   {
+    "name": "/api/v1/employees",
+    "protocol": "https",
+    "type": "explicit",
+    "method": "GET"
+   },
+   {
+    "name": "/api/v1/employees",
+    "protocol": "https",
+    "type": "explicit",
+    "method": "POST"
+   },
+   {
+    "name": "/api/v1/employees/*",
+    "protocol": "https",
+    "type": "wildcard",
+    "method": "*"
+   },
+   {
+    "name": "/api/v1/departments",
+    "protocol": "https",
+    "type": "explicit",
+    "method": "GET"
+   },
+   {
+    "name": "/api/v1/timesheets/*",
+    "protocol": "https",
+    "type": "wildcard",
+    "method": "*"
+   }
+  ],
+  "methods": [
+   {
+    "name": "GET"
+   },
+   {
+    "name": "POST"
+   },
+   {
+    "name": "PUT"
+   },
+   {
+    "name": "DELETE"
+   }
+  ],
+  "filetypes": [
+   {
+    "name": "json",
+    "type": "explicit"
+   }
+  ],
+  "parameters": [
+   {
+    "name": "page",
+    "type": "explicit",
+    "valueType": "user-input",
+    "dataType": "integer"
+   },
+   {
+    "name": "size",
+    "type": "explicit",
+    "valueType": "user-input",
+    "dataType": "integer"
+   }
+  ],
+  "json-profiles": [
+   {
+    "name": "Default",
+    "defenseAttributes": {
+     "maximumTotalLengthOfJSONData": 65536
+    }
+   }
+  ],
+  "whitelist-ips": [
+   {
+    "ipAddress": "10.0.0.0",
+    "ipMask": "255.0.0.0",
+    "blockRequests": "never",
+    "trustedByPolicyBuilder": true
+   }
+  ],
+  "geolocation-enforcement": {
+   "disallowedLocations": [
+    {
+     "countryName": "North Korea",
+     "countryCode": "KP"
+    },
+    {
+     "countryName": "Iran",
+     "countryCode": "IR"
+    }
+   ]
+  },
+  "data-guard": {
+   "enabled": true,
+   "creditCardNumbers": true,
+   "usSocialSecurityNumbers": true
+  },
+  "brute-force-attack-preventions": [
+   {
+    "url": {
+     "name": "/api/v1/login",
+     "method": "POST"
+    },
+    "preventionDuration": "unlimited"
+   }
+  ],
+  "open-api-files": [
+   {
+    "link": "https://git.corp.contoso.com/specs/app1-api/openapi.yaml"
+   }
+  ],
+  "policy-builder": {
+   "learningMode": "disabled"
+  }
+ }
+}

@@ -1,0 +1,136 @@
+{
+ "policy": {
+  "name": "app1_waf",
+  "fullPath": "/Common/app1_waf",
+  "description": "app1_waf (exported)",
+  "enforcementMode": "blocking",
+  "template": {
+   "name": "POLICY_TEMPLATE_RAPID_DEPLOYMENT"
+  },
+  "applicationLanguage": "utf-8",
+  "caseInsensitive": false,
+  "signature-sets": [
+   {
+    "name": "Generic Detection Signatures (High/Medium Accuracy)",
+    "block": true,
+    "alarm": true
+   },
+   {
+    "name": "High Accuracy Signatures",
+    "block": true,
+    "alarm": true
+   }
+  ],
+  "blocking-settings": {
+   "violations": [
+    {
+     "name": "VIOL_ATTACK_SIGNATURE",
+     "alarm": true,
+     "block": true,
+     "description": "Attack signature detected"
+    },
+    {
+     "name": "VIOL_URL",
+     "alarm": true,
+     "block": true,
+     "description": "Illegal URL"
+    },
+    {
+     "name": "VIOL_METHOD",
+     "alarm": true,
+     "block": true,
+     "description": "Illegal method"
+    },
+    {
+     "name": "VIOL_FILETYPE",
+     "alarm": true,
+     "block": true,
+     "description": "Illegal file type"
+    },
+    {
+     "name": "VIOL_PARAMETER",
+     "alarm": true,
+     "block": true,
+     "description": "Illegal parameter"
+    },
+    {
+     "name": "VIOL_EVASION",
+     "alarm": true,
+     "block": false,
+     "description": "Evasion technique detected"
+    },
+    {
+     "name": "VIOL_HTTP_PROTOCOL",
+     "alarm": true,
+     "block": true,
+     "description": "HTTP protocol compliance failed"
+    },
+    {
+     "name": "VIOL_JSON_MALFORMED",
+     "alarm": true,
+     "block": true,
+     "description": "Malformed JSON data"
+    }
+   ]
+  },
+  "signature-settings": {
+   "signatureStaging": true,
+   "placeSignaturesInStaging": true
+  },
+  "urls": [
+   {
+    "name": "*",
+    "protocol": "http",
+    "type": "wildcard",
+    "method": "*",
+    "attackSignaturesCheck": true
+   },
+   {
+    "name": "*",
+    "protocol": "https",
+    "type": "wildcard",
+    "method": "*",
+    "attackSignaturesCheck": true
+   }
+  ],
+  "filetypes": [
+   {
+    "name": "*",
+    "type": "wildcard"
+   }
+  ],
+  "methods": [
+   {
+    "name": "GET"
+   },
+   {
+    "name": "POST"
+   },
+   {
+    "name": "HEAD"
+   }
+  ],
+  "parameters": [
+   {
+    "name": "*",
+    "type": "wildcard"
+   }
+  ],
+  "signatures": [
+   {
+    "signatureId": 200001834,
+    "performStaging": true
+   },
+   {
+    "signatureId": 200101609,
+    "enabled": false
+   }
+  ],
+  "data-guard": {
+   "enabled": false
+  },
+  "policy-builder": {
+   "learningMode": "manual"
+  }
+ }
+}

@@ -1,8 +1,9 @@
 # WAF Inventory & API Discovery: Plan
 
-> Status: **Plan / research complete, no code yet** · Last updated: 2026-10-24 · HTML version: [`docs/plan.html`](plan.html)
+> Status: **MVP built (phases 0–5)**, see [§0](#0-implementation-status) · Last updated: 2026-10-24 · HTML version: [`docs/plan.html`](plan.html)
 
 ## Contents
+0. [Implementation status](#0-implementation-status)
 1. [Goal & scope](#1-goal--scope)
 2. [Architecture](#2-architecture)
 3. [Vendor-neutral data model](#3-vendor-neutral-data-model)
@@ -17,6 +18,31 @@
 12. [Sources](#12-sources)
 
 ---
+
+## 0. Implementation status
+
+| Phase | Status | Where |
+|---|---|---|
+| 0: skeleton, data model, CLI, SQLite, fixtures | Done | `src/waf_inventory/models.py`, `cli.py`, `examples/` |
+| 1: Azure config (App Gateway v2 + Front Door Std/Premium, effective policy) | Done | `azure.py` |
+| 2: F5 REST + offline (`bigip.conf` / tmsh + ASM declarative export) | Done | `f5.py` |
+| 3: Log Analytics traffic → discovery → OpenAPI | Done | `azure.py` (KQL), `discovery.py` |
+| 4: Dashboard + exports (HTML / JSON / CSV / XLSX / OpenAPI) | Done | `web.py`, `report.py`, `templates/` |
+| 5: Findings | Done | `findings.py` |
+| 5: Snapshot diffing | **Not yet.** Every policy stores `raw` + `raw_hash` so a diff can be added later | |
+| 6: F5 log ingestion over syslog, BIG-IQ, classic Front Door, App Gateway for Containers, cloud WAFs | Not started. F5 logs can already be loaded as JSONL/CSV via the `logs` source | |
+
+**Where the build differs from the plan below, and why:**
+- **Azure SDKs replaced by plain ARM REST calls** (`httpx` + `azure-identity`), with api-versions pinned in `azure.API`.
+  - This avoids five management SDKs.
+  - Live collection produces exactly the ARM JSON that the offline `azure_bundle` source and the tests use.
+  - The App Gateway, WAF policy and Front Door resources come from per-subscription list calls rather than Resource Graph. This is simpler, and Resource Graph doesn't index the Front Door child resources anyway.
+- **`argparse`** instead of Typer, and **server-rendered Jinja pages without HTMX**: plain GET forms do the filtering.
+- **Normalized policy settings are stored as a JSON column on `WafPolicy`** rather than a `PolicySetting` table. The `policy_settings` export still flattens them to one row per setting.
+- **Applications** are derived from listener hostnames (or address:port) instead of a separate table.
+- **Effective policy** is the first matching route in evaluation order, with F5 LTM policy rules sorted by `ordinal` (first-match strategy).
+- **Log Analytics workspaces** are listed in the config (`log_workspaces`), not auto-discovered from diagnostic settings.
+- **Not verified against live tenants or devices.** All live code paths are tested against mock ARM, Log Analytics and iControl REST servers that follow the documented shapes. Before relying on the results, run the first live collection with `--save-raw` and review it.
 
 ## 1. Goal & scope
 
