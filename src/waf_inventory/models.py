@@ -122,6 +122,28 @@ class Finding(Base):
     detail: Mapped[str]
 
 
+class User(Base):
+    __tablename__ = "user"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[str] = mapped_column(unique=True)
+    password_hash: Mapped[str]
+    role: Mapped[str] = mapped_column(default="admin")
+    last_login: Mapped[datetime | None]
+
+
+class LoginSession(Base):
+    """Server-side session; the cookie holds a random token, only its SHA-256 is stored."""
+    __tablename__ = "login_session"
+    id: Mapped[str] = mapped_column(primary_key=True)  # sha256(token)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id"))
+    csrf: Mapped[str]
+    created: Mapped[datetime]
+    last_seen: Mapped[datetime]
+    ip: Mapped[str | None]
+    user_agent: Mapped[str | None]
+    user: Mapped[User] = relationship()
+
+
 def connect(url: str) -> Session:
     if "://" not in url:
         url = f"sqlite:///{url}"

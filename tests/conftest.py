@@ -2,9 +2,14 @@ import shutil
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
+from waf_inventory import auth
 from waf_inventory.cli import main
 from waf_inventory.models import connect
+from waf_inventory.web import create_app
+
+PASSWORD = "correct horse battery"
 
 EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
 
@@ -25,3 +30,13 @@ def session(demo_db):
     s = connect(demo_db)
     yield s
     s.close()
+
+
+@pytest.fixture
+def client(demo_db) -> TestClient:
+    """Dashboard client signed in as admin."""
+    with connect(demo_db) as s:
+        auth.set_password(s, "admin", PASSWORD)
+    c = TestClient(create_app(demo_db))
+    assert c.post("/login", data={"username": "admin", "password": PASSWORD}).status_code == 200
+    return c

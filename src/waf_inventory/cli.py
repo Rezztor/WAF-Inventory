@@ -1,8 +1,9 @@
-"""waf-inv: collect | findings | serve | export."""
+"""waf-inv: collect | findings | serve | export | reset-password | tls."""
 from __future__ import annotations
 
 import argparse
 import csv
+import getpass
 import glob
 import json
 import os
@@ -15,7 +16,7 @@ from .models import Endpoint, connect, now, save_snapshot, source
 
 
 def load_config(path: str) -> dict:
-    cfg = tomllib.loads(Path(path).read_text())
+    cfg = tomllib.loads(Path(path).read_text()) if Path(path).exists() else {}  # optional: the container runs without one
     cfg["_dir"] = Path(path).resolve().parent
     return cfg
 
@@ -151,14 +152,56 @@ def cmd_export(args, cfg, session) -> int:
 def cmd_serve(args, cfg, session) -> int:
     import uvicorn
 
+    from . import auth, tls
     from .web import create_app
-    uvicorn.run(create_app(cfg["database"]), host=args.host, port=args.port)
+    if not auth.has_users(session):
+        sys.exit("No admin account yet. Create one first: waf-inv reset-password <username>")
+    ssl = {}
+    if args.tls_dir:
+        cert, key = tls.ensure_cert(Path(args.tls_dir))
+        ssl = {"ssl_certfile": str(cert), "ssl_keyfile": str(key)}
+        print(f"HTTPS certificate SHA-256 fingerprint: {tls.fingerprint(cert)}", flush=True)
+    uvicorn.run(create_app(cfg["database"]), host=args.host, port=args.port, server_header=False, **ssl)
+    return 0
+
+
+def cmd_reset_password(args, cfg, session) -> int:
+    """Create the user or set a new password. Also the recovery path: it needs shell access to the host."""
+    from . import auth
+    if args.password_stdin:
+        password = sys.stdin.readline().rstrip("\n")
+    else:
+        password = getpass.getpass(f"New password for {args.username}: ")
+        if getpass.getpass("Again: ") != password:
+            sys.exit("passwords do not match")
+    try:
+        auth.set_password(session, args.username, password)
+    except ValueError as e:
+        sys.exit(str(e))
+    print(f"password set for {args.username}; existing sessions signed out")
+    return 0
+
+
+def cmd_tls(args, cfg, session) -> int:
+    from . import tls
+    if not args.tls_dir:
+        sys.exit("set WAF_INV_TLS_DIR or pass --tls-dir")
+    folder = Path(args.tls_dir)
+    try:
+        if args.action == "csr":
+            sys.stdout.write(tls.make_csr(folder, args.dns or [], args.ip or []).decode())
+        elif args.action == "install":
+            print(f"installed; SHA-256 fingerprint {tls.install_cert(folder, sys.stdin.buffer.read())}. Restart to use it.")
+        else:
+            print(f"SHA-256 fingerprint {tls.fingerprint(tls.ensure_cert(folder)[0])}")
+    except ValueError as e:
+        sys.exit(str(e))
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="waf-inv", description=__doc__)
-    ap.add_argument("-c", "--config", default=os.environ.get("WAF_INV_CONFIG", "config.toml"))
+    ap.add_argument("-c", "--config", help="config file (default: $WAF_INV_CONFIG or config.toml; optional unless given here)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("collect", help="collect config + traffic from sources, then recompute findings")
     p.add_argument("--source", action="append", help="only this source (repeatable)")
@@ -172,15 +215,28 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("serve", help="run the dashboard")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8000)
+    tls_dir = os.environ.get("WAF_INV_TLS_DIR")
+    p.add_argument("--tls-dir", default=tls_dir, help="serve HTTPS with cert.pem/key.pem from here (self-signed if missing)")
+    p = sub.add_parser("reset-password", help="create the admin account or set a new password")
+    p.add_argument("username")
+    p.add_argument("--password-stdin", action="store_true", help="read the password from standard input")
+    p = sub.add_parser("tls", help="HTTPS certificate: show it, make a CSR for your CA, install the signed certificate")
+    p.add_argument("action", choices=["show", "csr", "install"])
+    p.add_argument("--tls-dir", default=tls_dir)
+    p.add_argument("--dns", action="append", help="csr: DNS name the console is reached on (repeatable)")
+    p.add_argument("--ip", action="append", help="csr: IP address the console is reached on (repeatable)")
     args = ap.parse_args(argv)
 
-    cfg = load_config(args.config)
+    if args.config and not Path(args.config).exists():
+        sys.exit(f"config file not found: {args.config}")
+    cfg = load_config(args.config or os.environ.get("WAF_INV_CONFIG", "config.toml"))
     db = cfg.get("database", "waf_inventory.db")
     if "://" not in db and not Path(db).is_absolute():
         db = str(cfg["_dir"] / db)
     cfg["database"] = db
     session = connect(db)
-    return {"collect": cmd_collect, "findings": cmd_findings, "export": cmd_export, "serve": cmd_serve}[args.cmd](args, cfg, session)
+    return {"collect": cmd_collect, "findings": cmd_findings, "export": cmd_export, "serve": cmd_serve,
+            "reset-password": cmd_reset_password, "tls": cmd_tls}[args.cmd](args, cfg, session)
 
 
 if __name__ == "__main__":

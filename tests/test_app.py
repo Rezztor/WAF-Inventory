@@ -3,12 +3,10 @@ import csv
 import io
 import json
 
-from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 
 from waf_inventory import report
 from waf_inventory.cli import main
-from waf_inventory.web import create_app
 
 
 def test_findings_cover_the_planted_issues(session):
@@ -47,8 +45,8 @@ def test_effective_policy_on_endpoints(session):
     assert eps[("partners.contoso.com", "POST", "/api/partner/orders")]["mode"] == "none"
 
 
-def test_dashboard_pages(demo_db):
-    c = TestClient(create_app(demo_db))
+def test_dashboard_pages(client, demo_db):
+    c = client
     r = c.get("/")
     assert r.status_code == 200 and "applications" in r.text and "web listeners in blocking mode" in r.text
     for name in report.TABLES:
@@ -68,8 +66,8 @@ def test_dashboard_pages(demo_db):
     assert c.get("/t/nope").status_code == 404 and c.get("/policy/99999").status_code == 404
 
 
-def test_exports_over_http(demo_db):
-    c = TestClient(create_app(demo_db))
+def test_exports_over_http(client):
+    c = client
     r = c.get("/export/findings.csv", params={"severity": "high"})
     rows = list(csv.DictReader(io.StringIO(r.text)))
     assert r.headers["content-type"].startswith("text/csv") and rows and {x["severity"] for x in rows} == {"high"}
