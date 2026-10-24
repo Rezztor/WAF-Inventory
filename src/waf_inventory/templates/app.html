@@ -1,0 +1,30 @@
+{% extends "base.html" %}{% from "_macros.html" import grid, badge %}
+{% block title %}{{ host }} · WAF Inventory{% endblock %}
+{% block body %}
+<h1>{{ host }}</h1>
+{% for l in listeners %}
+<h2>{{ l.gateway.name }} <span class="muted">({{ l.gateway.vendor }} {{ l.gateway.kind }})</span> / {{ l.name }}</h2>
+<dl class="kv">
+  <dt>Protocol / port</dt><dd>{{ l.protocol }} {{ l.address or "" }}{{ ":" ~ l.port if l.port }}</dd>
+  <dt>Hostnames</dt><dd>{{ l.hostnames | join(", ") or "any" }}</dd>
+  <dt>WAF inspected</dt><dd>{{ badge(l.waf_capable) }}</dd>
+  <dt>Default WAF policy</dt><dd>{% if l.policy %}<a href="/policy/{{ l.policy.id }}">{{ l.policy.name }}</a> {{ badge(l.policy.mode) }}{% else %}{{ badge("none") }}{% endif %}</dd>
+</dl>
+<div class="tw" style="margin-top:10px"><table>
+<thead><tr><th>route</th><th>hosts</th><th>paths</th><th>backend</th><th>effective WAF policy</th><th>mode</th></tr></thead>
+<tbody>{% for r in l.routes %}<tr><td>{{ r.name }}</td><td>{{ r.hosts | join(", ") }}</td><td><code>{{ r.paths | join(", ") }}</code></td>
+<td>{{ (r.backend or {}).get("name") or "" }} <span class="muted">{{ (r.backend or {}).get("members", []) | select | join(", ") }}</span></td>
+<td>{% if r.policy %}<a href="/policy/{{ r.policy.id }}">{{ r.policy.name }}</a>{% endif %}</td><td>{{ badge(r.policy.mode if r.policy else "none") }}</td></tr>{% endfor %}</tbody>
+</table></div>
+{% endfor %}
+
+<h2>Discovered endpoints ({{ endpoints | length }}) {% if endpoints %}<a href="/export/openapi/{{ host | urlencode }}.json" style="font-size:13px;font-weight:400">OpenAPI</a>{% endif %}</h2>
+{% if endpoints %}<div class="tw"><table>
+<thead><tr><th>method</th><th>template</th><th>kind</th><th>hits</th><th>statuses</th><th>query params</th><th>last seen</th><th>confirmed</th></tr></thead>
+<tbody>{% for e in endpoints %}<tr><td>{{ e.method }}</td><td><code>{{ e.template }}</code></td><td>{{ e.kind }}</td><td>{{ e.hits }}</td>
+<td>{{ e.statuses | dictsort | map("join", "×") | join(", ") }}</td><td>{{ e.query_params | join(", ") }}</td><td>{{ e.last_seen or "" }}</td><td>{{ badge(e.confirmed) }}</td></tr>{% endfor %}</tbody>
+</table></div>{% else %}<p class="muted">No traffic seen for this host.</p>{% endif %}
+
+<h2>Findings ({{ findings | length }})</h2>
+{{ grid("findings", findings) }}
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% from "_macros.html" import badge %}
+{% block title %}{{ p.name }} · WAF Inventory{% endblock %}
+{% block body %}
+<h1>{{ p.name }} {{ badge(p.mode) }}</h1>
+<dl class="kv">
+  <dt>Vendor</dt><dd>{{ p.vendor }}</dd>
+  <dt>Source</dt><dd>{{ p.source.name }}</dd>
+  <dt>Native ID</dt><dd><code>{{ p.native_id }}</code></dd>
+  <dt>Config hash</dt><dd><code>{{ p.raw_hash[:16] }}</code></dd>
+  <dt>Attached to</dt><dd>{% for l in used %}{{ l.gateway.name }} / {{ l.name }}{{ ", " if not loop.last }}{% else %}{{ badge("none") }}{% endfor %}</dd>
+</dl>
+<h2>Normalized settings</h2>
+<div class="tw"><table><thead><tr><th>setting</th><th>value</th></tr></thead><tbody>
+{% for k, v in p.settings.items() %}<tr><td>{{ k | replace("_", " ") }}</td><td>
+{% if v is mapping %}<dl class="kv">{% for a, b in v.items() %}<dt>{{ a }}</dt><dd>{{ b }}</dd>{% endfor %}</dl>
+{% elif v is iterable and v is not string %}{% if v %}<ul style="margin:0;padding-left:18px">{% for i in v[:200] %}<li>{% if i is mapping %}{% for a, b in i.items() if b not in (None, "", []) %}<b>{{ a }}</b>: {{ b | join("; ") if b is iterable and b is not string else b }}{{ " · " if not loop.last }}{% endfor %}{% else %}{{ i }}{% endif %}</li>{% endfor %}{% if v | length > 200 %}<li class="muted">… {{ v | length - 200 }} more (see export)</li>{% endif %}</ul>{% else %}<span class="muted">none</span>{% endif %}
+{% else %}{{ v }}{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>
+<h2>Raw vendor configuration</h2>
+<details><summary>Show JSON</summary><pre>{{ raw }}</pre></details>
+{% endblock %}

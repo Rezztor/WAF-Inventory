@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -e ".[test]" ruff==0.6.9
+      - run: ruff check src tests
+      - run: pytest -q
+      - name: Demo end-to-end
+        run: |
+          waf-inv -c examples/demo.toml collect
+          waf-inv -c examples/demo.toml export -f xlsx -o inventory.xlsx
+          waf-inv -c examples/demo.toml export -f html -o report.html
+          waf-inv -c examples/demo.toml export -f openapi -o openapi

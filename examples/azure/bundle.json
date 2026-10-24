@@ -1,0 +1,975 @@
+{
+ "appgws": [
+  {
+   "name": "agw-prod-weu",
+   "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu",
+   "location": "westeurope",
+   "type": "Microsoft.Network/applicationGateways",
+   "properties": {
+    "sku": {
+     "name": "WAF_v2",
+     "tier": "WAF_v2",
+     "capacity": 2
+    },
+    "firewallPolicy": {
+     "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies/waf-agw-global"
+    },
+    "frontendIPConfigurations": [
+     {
+      "name": "appGwPublicFrontendIp",
+      "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/frontendIPConfigurations/appGwPublicFrontendIp",
+      "properties": {
+       "publicIPAddress": {
+        "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/publicIPAddresses/pip-agw-prod-weu"
+       }
+      }
+     }
+    ],
+    "frontendPorts": [
+     {
+      "name": "port_443",
+      "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/frontendPorts/port_443",
+      "properties": {
+       "port": 443
+      }
+     },
+     {
+      "name": "port_80",
+      "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/frontendPorts/port_80",
+      "properties": {
+       "port": 80
+      }
+     },
+     {
+      "name": "port_2222",
+      "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/frontendPorts/port_2222",
+      "properties": {
+       "port": 2222
+      }
+     }
+    ],
+    "backendAddressPools": [
+     {
+      "name": "pool-shop-web",
+      "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/backendAddressPools/pool-shop-web",
+      "properties": {
+       "backendAddresses": [
+        {
+         "fqdn": "shop-web.internal.contoso.com"
+        }
+       ]
+      }
+     },
+     {
+      "name": "pool-shop-api",
+      "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/backendAddressPools/pool-shop-api",
+      "properties": {
+       "backendAddresses": [
+        {
+         "ipAddress": "10.20.1.10"
+        },
+        {
+         "ipAddress": "10.20.1.11"
+        }
+       ]
+      }
+     },
+     {
+      "name": "pool-portal",
+      "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/backendAddressPools/pool-portal",
+      "properties": {
+       "backendAddresses": [
+        {
+         "fqdn": "portal-contoso.azurewebsites.net"
+        }
+       ]
+      }
+     },
+     {
+      "name": "pool-legacy",
+      "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/backendAddressPools/pool-legacy",
+      "properties": {
+       "backendAddresses": [
+        {
+         "ipAddress": "10.20.9.5"
+        }
+       ]
+      }
+     },
+     {
+      "name": "pool-sftp",
+      "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/backendAddressPools/pool-sftp",
+      "properties": {
+       "backendAddresses": [
+        {
+         "ipAddress": "10.20.9.20"
+        }
+       ]
+      }
+     }
+    ],
+    "httpListeners": [
+     {
+      "name": "lst-shop-https",
+      "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/httpListeners/lst-shop-https",
+      "properties": {
+       "frontendIPConfiguration": {
+        "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/frontendIPConfigurations/appGwPublicFrontendIp"
+       },
+       "frontendPort": {
+        "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/frontendPorts/port_443"
+       },
+       "protocol": "Https",
+       "requireServerNameIndication": true,
+       "hostName": "shop.contoso.com",
+       "sslCertificate": {
+        "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/sslCertificates/wildcard-contoso-com"
+       },
+       "firewallPolicy": {
+        "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies/waf-agw-shop"
+       }
+      }
+     },
+     {
+      "name": "lst-portal-https",
+      "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/httpListeners/lst-portal-https",
+      "properties": {
+       "frontendIPConfiguration": {
+        "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/frontendIPConfigurations/appGwPublicFrontendIp"
+       },
+       "frontendPort": {
+        "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/frontendPorts/port_443"
+       },
+       "protocol": "Https",
+       "requireServerNameIndication": true,
+       "hostNames": [
+        "portal.contoso.com",
+        "reports.contoso.com"
+       ],
+       "sslCertificate": {
+        "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/sslCertificates/wildcard-contoso-com"
+       }
+      }
+     },
+     {
+      "name": "lst-legacy-http",
+      "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/httpListeners/lst-legacy-http",
+      "properties": {
+       "frontendIPConfiguration": {
+        "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/frontendIPConfigurations/appGwPublicFrontendIp"
+       },
+       "frontendPort": {
+        "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/frontendPorts/port_80"
+       },
+       "protocol": "Http",
+       "requireServerNameIndication": true,
+       "hostName": "legacy.contoso.com"
+      }
+     }
+    ],
+    "listeners": [
+     {
+      "name": "lst-sftp-tcp",
+      "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/listeners/lst-sftp-tcp",
+      "properties": {
+       "frontendIPConfiguration": {
+        "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/frontendIPConfigurations/appGwPublicFrontendIp"
+       },
+       "frontendPort": {
+        "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/frontendPorts/port_2222"
+       },
+       "protocol": "Tcp"
+      }
+     }
+    ],
+    "urlPathMaps": [
+     {
+      "name": "pm-shop",
+      "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/urlPathMaps/pm-shop",
+      "properties": {
+       "defaultBackendAddressPool": {
+        "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/backendAddressPools/pool-shop-web"
+       },
+       "pathRules": [
+        {
+         "name": "api",
+         "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/urlPathMaps/pm-shop/pathRules/api",
+         "properties": {
+          "paths": [
+           "/api/*"
+          ],
+          "backendAddressPool": {
+           "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/backendAddressPools/pool-shop-api"
+          },
+          "firewallPolicy": {
+           "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies/waf-agw-shop-api"
+          }
+         }
+        },
+        {
+         "name": "admin",
+         "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/urlPathMaps/pm-shop/pathRules/admin",
+         "properties": {
+          "paths": [
+           "/admin/*"
+          ],
+          "backendAddressPool": {
+           "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/backendAddressPools/pool-shop-web"
+          }
+         }
+        }
+       ]
+      }
+     }
+    ],
+    "requestRoutingRules": [
+     {
+      "name": "rr-legacy",
+      "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/requestRoutingRules/rr-legacy",
+      "properties": {
+       "ruleType": "Basic",
+       "priority": 300,
+       "httpListener": {
+        "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/httpListeners/lst-legacy-http"
+       },
+       "backendAddressPool": {
+        "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/backendAddressPools/pool-legacy"
+       }
+      }
+     },
+     {
+      "name": "rr-shop",
+      "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/requestRoutingRules/rr-shop",
+      "properties": {
+       "ruleType": "PathBasedRouting",
+       "priority": 100,
+       "httpListener": {
+        "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/httpListeners/lst-shop-https"
+       },
+       "urlPathMap": {
+        "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/urlPathMaps/pm-shop"
+       }
+      }
+     },
+     {
+      "name": "rr-portal",
+      "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/requestRoutingRules/rr-portal",
+      "properties": {
+       "ruleType": "Basic",
+       "priority": 200,
+       "httpListener": {
+        "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/httpListeners/lst-portal-https"
+       },
+       "backendAddressPool": {
+        "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/applicationGateways/agw-prod-weu/backendAddressPools/pool-portal"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "agw-dev",
+   "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-dev/providers/Microsoft.Network/applicationGateways/agw-dev",
+   "location": "westeurope",
+   "properties": {
+    "sku": {
+     "name": "WAF_v2",
+     "tier": "WAF_v2"
+    },
+    "webApplicationFirewallConfiguration": {
+     "enabled": true,
+     "firewallMode": "Detection",
+     "ruleSetType": "OWASP",
+     "ruleSetVersion": "3.0",
+     "requestBodyCheck": true,
+     "disabledRuleGroups": [
+      {
+       "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+       "rules": [
+        920300,
+        920320
+       ]
+      }
+     ]
+    },
+    "frontendIPConfigurations": [
+     {
+      "name": "fe",
+      "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-dev/providers/Microsoft.Network/applicationGateways/agw-dev/frontendIPConfigurations/fe",
+      "properties": {
+       "privateIPAddress": "10.50.0.4"
+      }
+     }
+    ],
+    "frontendPorts": [
+     {
+      "name": "p80",
+      "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-dev/providers/Microsoft.Network/applicationGateways/agw-dev/frontendPorts/p80",
+      "properties": {
+       "port": 80
+      }
+     }
+    ],
+    "backendAddressPools": [
+     {
+      "name": "pool-dev",
+      "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-dev/providers/Microsoft.Network/applicationGateways/agw-dev/backendAddressPools/pool-dev",
+      "properties": {
+       "backendAddresses": [
+        {
+         "ipAddress": "10.50.1.4"
+        }
+       ]
+      }
+     }
+    ],
+    "httpListeners": [
+     {
+      "name": "lst-dev",
+      "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-dev/providers/Microsoft.Network/applicationGateways/agw-dev/httpListeners/lst-dev",
+      "properties": {
+       "frontendIPConfiguration": {
+        "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-dev/providers/Microsoft.Network/applicationGateways/agw-dev/frontendIPConfigurations/fe"
+       },
+       "frontendPort": {
+        "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-dev/providers/Microsoft.Network/applicationGateways/agw-dev/frontendPorts/p80"
+       },
+       "protocol": "Http",
+       "hostNames": [
+        "dev.contoso.com",
+        "*.dev.contoso.com"
+       ]
+      }
+     }
+    ],
+    "requestRoutingRules": [
+     {
+      "name": "rr-dev",
+      "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-dev/providers/Microsoft.Network/applicationGateways/agw-dev/requestRoutingRules/rr-dev",
+      "properties": {
+       "ruleType": "Basic",
+       "priority": 10,
+       "httpListener": {
+        "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-dev/providers/Microsoft.Network/applicationGateways/agw-dev/httpListeners/lst-dev"
+       },
+       "backendAddressPool": {
+        "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-dev/providers/Microsoft.Network/applicationGateways/agw-dev/backendAddressPools/pool-dev"
+       }
+      }
+     }
+    ]
+   }
+  }
+ ],
+ "appgw_policies": [
+  {
+   "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies/waf-agw-global",
+   "name": "waf-agw-global",
+   "type": "Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies",
+   "location": "westeurope",
+   "properties": {
+    "policySettings": {
+     "state": "Enabled",
+     "mode": "Prevention",
+     "requestBodyCheck": true,
+     "requestBodyInspectLimitInKB": 128,
+     "maxRequestBodySizeInKb": 128,
+     "fileUploadLimitInMb": 100,
+     "requestBodyEnforcement": true,
+     "fileUploadEnforcement": true
+    },
+    "managedRules": {
+     "managedRuleSets": [
+      {
+       "ruleSetType": "OWASP",
+       "ruleSetVersion": "3.2",
+       "ruleGroupOverrides": [
+        {
+         "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
+         "rules": [
+          {
+           "ruleId": "942100",
+           "state": "Disabled"
+          },
+          {
+           "ruleId": "942110",
+           "state": "Enabled",
+           "action": "AnomalyScoring"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "ruleSetType": "Microsoft_BotManagerRuleSet",
+       "ruleSetVersion": "1.0",
+       "ruleGroupOverrides": []
+      }
+     ],
+     "exclusions": [
+      {
+       "matchVariable": "RequestHeaderNames",
+       "selectorMatchOperator": "Equals",
+       "selector": "x-api-token"
+      }
+     ]
+    },
+    "customRules": [
+     {
+      "name": "AllowCorpEgress",
+      "priority": 5,
+      "ruleType": "MatchRule",
+      "action": "Allow",
+      "state": "Enabled",
+      "matchConditions": [
+       {
+        "matchVariables": [
+         {
+          "variableName": "RemoteAddr"
+         }
+        ],
+        "operator": "IPMatch",
+        "negationConditon": false,
+        "matchValues": [
+         "203.0.113.0/24",
+         "198.51.100.10"
+        ]
+       }
+      ]
+     },
+     {
+      "name": "BlockSanctionedGeo",
+      "priority": 10,
+      "ruleType": "MatchRule",
+      "action": "Block",
+      "state": "Enabled",
+      "matchConditions": [
+       {
+        "matchVariables": [
+         {
+          "variableName": "RemoteAddr"
+         }
+        ],
+        "operator": "GeoMatch",
+        "negationConditon": false,
+        "matchValues": [
+         "KP",
+         "IR",
+         "SY"
+        ]
+       }
+      ]
+     }
+    ],
+    "provisioningState": "Succeeded",
+    "applicationGateways": []
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies/waf-agw-shop",
+   "name": "waf-agw-shop",
+   "type": "Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies",
+   "location": "westeurope",
+   "properties": {
+    "policySettings": {
+     "state": "Enabled",
+     "mode": "Prevention",
+     "requestBodyCheck": true,
+     "requestBodyInspectLimitInKB": 128,
+     "maxRequestBodySizeInKb": 128,
+     "fileUploadLimitInMb": 100,
+     "requestBodyEnforcement": true,
+     "fileUploadEnforcement": true
+    },
+    "managedRules": {
+     "managedRuleSets": [
+      {
+       "ruleSetType": "Microsoft_DefaultRuleSet",
+       "ruleSetVersion": "2.1",
+       "ruleGroupOverrides": []
+      },
+      {
+       "ruleSetType": "Microsoft_BotManagerRuleSet",
+       "ruleSetVersion": "1.0",
+       "ruleGroupOverrides": []
+      }
+     ],
+     "exclusions": []
+    },
+    "customRules": [
+     {
+      "name": "BlockSanctionedGeo",
+      "priority": 10,
+      "ruleType": "MatchRule",
+      "action": "Block",
+      "state": "Enabled",
+      "matchConditions": [
+       {
+        "matchVariables": [
+         {
+          "variableName": "RemoteAddr"
+         }
+        ],
+        "operator": "GeoMatch",
+        "negationConditon": false,
+        "matchValues": [
+         "KP",
+         "IR",
+         "SY"
+        ]
+       }
+      ]
+     },
+     {
+      "name": "RateLimitLogin",
+      "priority": 20,
+      "ruleType": "RateLimitRule",
+      "action": "Block",
+      "state": "Enabled",
+      "rateLimitDuration": "OneMin",
+      "rateLimitThreshold": 100,
+      "groupByUserSession": [
+       {
+        "groupByVariables": [
+         {
+          "variableName": "ClientAddr"
+         }
+        ]
+       }
+      ],
+      "matchConditions": [
+       {
+        "matchVariables": [
+         {
+          "variableName": "RequestUri"
+         }
+        ],
+        "operator": "BeginsWith",
+        "negationConditon": false,
+        "matchValues": [
+         "/admin/login"
+        ]
+       }
+      ]
+     }
+    ],
+    "provisioningState": "Succeeded",
+    "applicationGateways": []
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies/waf-agw-shop-api",
+   "name": "waf-agw-shop-api",
+   "type": "Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies",
+   "location": "westeurope",
+   "properties": {
+    "policySettings": {
+     "state": "Enabled",
+     "mode": "Detection",
+     "requestBodyCheck": false,
+     "requestBodyInspectLimitInKB": 128,
+     "maxRequestBodySizeInKb": 128,
+     "fileUploadLimitInMb": 100,
+     "requestBodyEnforcement": true,
+     "fileUploadEnforcement": true
+    },
+    "managedRules": {
+     "managedRuleSets": [
+      {
+       "ruleSetType": "OWASP",
+       "ruleSetVersion": "3.2",
+       "ruleGroupOverrides": []
+      }
+     ],
+     "exclusions": [
+      {
+       "matchVariable": "RequestArgNames",
+       "selectorMatchOperator": "StartsWith",
+       "selector": "filter"
+      },
+      {
+       "matchVariable": "RequestBodyJsonArgNames",
+       "selectorMatchOperator": "Equals",
+       "selector": "comment"
+      }
+     ]
+    },
+    "customRules": [],
+    "provisioningState": "Succeeded",
+    "applicationGateways": []
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies/waf-agw-unused",
+   "name": "waf-agw-unused",
+   "type": "Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies",
+   "location": "westeurope",
+   "properties": {
+    "policySettings": {
+     "state": "Enabled",
+     "mode": "Prevention",
+     "requestBodyCheck": true,
+     "requestBodyInspectLimitInKB": 128,
+     "maxRequestBodySizeInKb": 128,
+     "fileUploadLimitInMb": 100,
+     "requestBodyEnforcement": true,
+     "fileUploadEnforcement": true
+    },
+    "managedRules": {
+     "managedRuleSets": [
+      {
+       "ruleSetType": "OWASP",
+       "ruleSetVersion": "3.1",
+       "ruleGroupOverrides": []
+      }
+     ],
+     "exclusions": []
+    },
+    "customRules": [],
+    "provisioningState": "Succeeded",
+    "applicationGateways": []
+   }
+  }
+ ],
+ "afd_profiles": [
+  {
+   "profile": {
+    "name": "afd-contoso",
+    "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Cdn/profiles/afd-contoso",
+    "location": "Global",
+    "type": "Microsoft.Cdn/profiles",
+    "sku": {
+     "name": "Premium_AzureFrontDoor"
+    },
+    "properties": {
+     "frontDoorId": "0c1d2e3f-aaaa-bbbb-cccc-1234567890ab"
+    }
+   },
+   "endpoints": [
+    {
+     "name": "ep-contoso",
+     "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Cdn/profiles/afd-contoso/afdEndpoints/ep-contoso",
+     "properties": {
+      "hostName": "ep-contoso-b4c3d2e1f0.z01.azurefd.net",
+      "enabledState": "Enabled"
+     }
+    }
+   ],
+   "customDomains": [
+    {
+     "name": "api-contoso-com",
+     "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Cdn/profiles/afd-contoso/customDomains/api-contoso-com",
+     "properties": {
+      "hostName": "api.contoso.com",
+      "tlsSettings": {
+       "certificateType": "ManagedCertificate",
+       "minimumTlsVersion": "TLS12"
+      },
+      "domainValidationState": "Approved"
+     }
+    },
+    {
+     "name": "www-contoso-com",
+     "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Cdn/profiles/afd-contoso/customDomains/www-contoso-com",
+     "properties": {
+      "hostName": "www.contoso.com",
+      "tlsSettings": {
+       "certificateType": "ManagedCertificate",
+       "minimumTlsVersion": "TLS12"
+      },
+      "domainValidationState": "Approved"
+     }
+    },
+    {
+     "name": "partners-contoso-com",
+     "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Cdn/profiles/afd-contoso/customDomains/partners-contoso-com",
+     "properties": {
+      "hostName": "partners.contoso.com",
+      "tlsSettings": {
+       "certificateType": "ManagedCertificate",
+       "minimumTlsVersion": "TLS12"
+      },
+      "domainValidationState": "Approved"
+     }
+    }
+   ],
+   "originGroups": [
+    {
+     "name": "og-api",
+     "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Cdn/profiles/afd-contoso/originGroups/og-api",
+     "properties": {
+      "healthProbeSettings": {
+       "probePath": "/health"
+      }
+     },
+     "origins": [
+      {
+       "name": "og-api-origin",
+       "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Cdn/profiles/afd-contoso/originGroups/og-api/origins/og-api-origin",
+       "properties": {
+        "hostName": "apim-contoso.azure-api.net",
+        "httpPort": 80,
+        "httpsPort": 443,
+        "priority": 1,
+        "weight": 1000
+       }
+      }
+     ]
+    },
+    {
+     "name": "og-www",
+     "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Cdn/profiles/afd-contoso/originGroups/og-www",
+     "properties": {
+      "healthProbeSettings": {
+       "probePath": "/health"
+      }
+     },
+     "origins": [
+      {
+       "name": "og-www-origin",
+       "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Cdn/profiles/afd-contoso/originGroups/og-www/origins/og-www-origin",
+       "properties": {
+        "hostName": "www-contoso.azurewebsites.net",
+        "httpPort": 80,
+        "httpsPort": 443,
+        "priority": 1,
+        "weight": 1000
+       }
+      }
+     ]
+    },
+    {
+     "name": "og-partners",
+     "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Cdn/profiles/afd-contoso/originGroups/og-partners",
+     "properties": {
+      "healthProbeSettings": {
+       "probePath": "/health"
+      }
+     },
+     "origins": [
+      {
+       "name": "og-partners-origin",
+       "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Cdn/profiles/afd-contoso/originGroups/og-partners/origins/og-partners-origin",
+       "properties": {
+        "hostName": "partners-contoso.azurewebsites.net",
+        "httpPort": 80,
+        "httpsPort": 443,
+        "priority": 1,
+        "weight": 1000
+       }
+      }
+     ]
+    }
+   ],
+   "routes": [
+    {
+     "name": "route-api",
+     "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Cdn/profiles/afd-contoso/afdEndpoints/ep-contoso/routes/route-api",
+     "properties": {
+      "customDomains": [
+       {
+        "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Cdn/profiles/afd-contoso/customDomains/api-contoso-com"
+       }
+      ],
+      "originGroup": {
+       "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Cdn/profiles/afd-contoso/originGroups/og-api"
+      },
+      "patternsToMatch": [
+       "/*"
+      ],
+      "supportedProtocols": [
+       "Https"
+      ],
+      "httpsRedirect": "Enabled",
+      "forwardingProtocol": "HttpsOnly",
+      "linkToDefaultDomain": "Disabled",
+      "enabledState": "Enabled"
+     }
+    },
+    {
+     "name": "route-www",
+     "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Cdn/profiles/afd-contoso/afdEndpoints/ep-contoso/routes/route-www",
+     "properties": {
+      "customDomains": [
+       {
+        "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Cdn/profiles/afd-contoso/customDomains/www-contoso-com"
+       }
+      ],
+      "originGroup": {
+       "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Cdn/profiles/afd-contoso/originGroups/og-www"
+      },
+      "patternsToMatch": [
+       "/*"
+      ],
+      "supportedProtocols": [
+       "Https"
+      ],
+      "httpsRedirect": "Enabled",
+      "forwardingProtocol": "HttpsOnly",
+      "linkToDefaultDomain": "Enabled",
+      "enabledState": "Enabled"
+     }
+    },
+    {
+     "name": "route-partners",
+     "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Cdn/profiles/afd-contoso/afdEndpoints/ep-contoso/routes/route-partners",
+     "properties": {
+      "customDomains": [
+       {
+        "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Cdn/profiles/afd-contoso/customDomains/partners-contoso-com"
+       }
+      ],
+      "originGroup": {
+       "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Cdn/profiles/afd-contoso/originGroups/og-partners"
+      },
+      "patternsToMatch": [
+       "/*"
+      ],
+      "supportedProtocols": [
+       "Https"
+      ],
+      "httpsRedirect": "Enabled",
+      "forwardingProtocol": "HttpsOnly",
+      "linkToDefaultDomain": "Disabled",
+      "enabledState": "Enabled"
+     }
+    }
+   ],
+   "securityPolicies": [
+    {
+     "name": "sp-waf",
+     "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Cdn/profiles/afd-contoso/securityPolicies/sp-waf",
+     "properties": {
+      "parameters": {
+       "type": "WebApplicationFirewall",
+       "wafPolicy": {
+        "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/FrontDoorWebApplicationFirewallPolicies/fdwafcontoso"
+       },
+       "associations": [
+        {
+         "domains": [
+          {
+           "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Cdn/profiles/afd-contoso/customDomains/api-contoso-com"
+          },
+          {
+           "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Cdn/profiles/afd-contoso/customDomains/www-contoso-com"
+          },
+          {
+           "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Cdn/profiles/afd-contoso/afdEndpoints/ep-contoso"
+          }
+         ],
+         "patternsToMatch": [
+          "/*"
+         ]
+        }
+       ]
+      }
+     }
+    }
+   ]
+  }
+ ],
+ "afd_policies": [
+  {
+   "name": "fdwafcontoso",
+   "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Network/FrontDoorWebApplicationFirewallPolicies/fdwafcontoso",
+   "location": "Global",
+   "sku": {
+    "name": "Premium_AzureFrontDoor"
+   },
+   "properties": {
+    "policySettings": {
+     "enabledState": "Enabled",
+     "mode": "Prevention",
+     "requestBodyCheck": "Enabled",
+     "customBlockResponseStatusCode": 403
+    },
+    "customRules": {
+     "rules": [
+      {
+       "name": "ApiRateLimit",
+       "priority": 1,
+       "enabledState": "Enabled",
+       "ruleType": "RateLimitRule",
+       "rateLimitDurationInMinutes": 1,
+       "rateLimitThreshold": 600,
+       "action": "Block",
+       "matchConditions": [
+        {
+         "matchVariable": "RequestHeader",
+         "selector": "Host",
+         "operator": "Equal",
+         "negateCondition": false,
+         "matchValue": [
+          "api.contoso.com"
+         ]
+        }
+       ]
+      },
+      {
+       "name": "GeoAllowEU",
+       "priority": 2,
+       "enabledState": "Enabled",
+       "ruleType": "MatchRule",
+       "action": "Block",
+       "matchConditions": [
+        {
+         "matchVariable": "SocketAddr",
+         "operator": "GeoMatch",
+         "negateCondition": true,
+         "matchValue": [
+          "NL",
+          "DE",
+          "FR",
+          "BE",
+          "GB",
+          "IE"
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    "managedRules": {
+     "managedRuleSets": [
+      {
+       "ruleSetType": "Microsoft_DefaultRuleSet",
+       "ruleSetVersion": "2.1",
+       "ruleSetAction": "Block",
+       "exclusions": [
+        {
+         "matchVariable": "RequestCookieNames",
+         "selectorMatchOperator": "StartsWith",
+         "selector": "__Secure-"
+        }
+       ],
+       "ruleGroupOverrides": [
+        {
+         "ruleGroupName": "SQLI",
+         "rules": [
+          {
+           "ruleId": "942440",
+           "enabledState": "Disabled",
+           "action": "AnomalyScoring"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "ruleSetType": "Microsoft_BotManagerRuleSet",
+       "ruleSetVersion": "1.1",
+       "ruleGroupOverrides": []
+      }
+     ]
+    },
+    "securityPolicyLinks": [
+     {
+      "id": "/subscriptions/00000000-1111-2222-3333-444444444444/resourceGroups/rg-edge-prod/providers/Microsoft.Cdn/profiles/afd-contoso/securityPolicies/sp-waf"
+     }
+    ]
+   }
+  }
+ ]
+}

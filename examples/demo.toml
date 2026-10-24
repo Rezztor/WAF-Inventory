@@ -1,0 +1,27 @@
+# Demo configuration: runs entirely on the sample files in this folder (fictitious "Contoso" estate).
+#   waf-inv -c examples/demo.toml collect
+#   waf-inv -c examples/demo.toml serve
+database = "demo.db"
+
+[discovery]
+collapse_threshold = 10        # distinct values at one path position before it becomes {param}
+min_hits = 5                   # evidence floor for a "confirmed" endpoint
+openapi_specs = ["specs/*.json"]
+
+[discovery.overrides]          # templates you know better than the heuristics
+"shop.contoso.com" = ["/api/v1/users/{username}/profile"]
+
+[[sources]]
+name = "azure-contoso (sample)"
+type = "azure_bundle"          # offline copy of what `type = "azure"` fetches live
+path = "azure/bundle.json"
+
+[[sources]]
+name = "dc1-bigip01 (offline)"
+type = "f5_offline"            # bigip.conf + ASM declarative exports
+path = "f5"
+
+[[sources]]
+name = "access-logs (sample)"
+type = "logs"                  # JSONL/CSV access-log rows (e.g. exported from Log Analytics or a SIEM)
+path = "logs/*.jsonl"

@@ -1,0 +1,95 @@
+{
+ "policy": {
+  "name": "intranet_waf",
+  "fullPath": "/Common/intranet_waf",
+  "description": "intranet_waf (exported)",
+  "enforcementMode": "blocking",
+  "template": {
+   "name": "POLICY_TEMPLATE_FUNDAMENTAL"
+  },
+  "applicationLanguage": "utf-8",
+  "caseInsensitive": false,
+  "signature-sets": [
+   {
+    "name": "Generic Detection Signatures (High/Medium Accuracy)",
+    "block": true,
+    "alarm": true
+   },
+   {
+    "name": "High Accuracy Signatures",
+    "block": true,
+    "alarm": true
+   }
+  ],
+  "blocking-settings": {
+   "violations": [
+    {
+     "name": "VIOL_ATTACK_SIGNATURE",
+     "alarm": true,
+     "block": true,
+     "description": "Attack signature detected"
+    },
+    {
+     "name": "VIOL_URL",
+     "alarm": true,
+     "block": true,
+     "description": "Illegal URL"
+    },
+    {
+     "name": "VIOL_METHOD",
+     "alarm": true,
+     "block": true,
+     "description": "Illegal method"
+    },
+    {
+     "name": "VIOL_FILETYPE",
+     "alarm": true,
+     "block": true,
+     "description": "Illegal file type"
+    },
+    {
+     "name": "VIOL_PARAMETER",
+     "alarm": true,
+     "block": true,
+     "description": "Illegal parameter"
+    },
+    {
+     "name": "VIOL_EVASION",
+     "alarm": true,
+     "block": true,
+     "description": "Evasion technique detected"
+    },
+    {
+     "name": "VIOL_HTTP_PROTOCOL",
+     "alarm": true,
+     "block": true,
+     "description": "HTTP protocol compliance failed"
+    },
+    {
+     "name": "VIOL_JSON_MALFORMED",
+     "alarm": true,
+     "block": true,
+     "description": "Malformed JSON data"
+    }
+   ]
+  },
+  "urls": [
+   {
+    "name": "*",
+    "protocol": "http",
+    "type": "wildcard",
+    "method": "*"
+   }
+  ],
+  "signatures": [
+   {
+    "signatureId": 200000001,
+    "enabled": false
+   },
+   {
+    "signatureId": 200000098,
+    "enabled": false
+   }
+  ]
+ }
+}

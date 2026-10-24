@@ -1,0 +1,43 @@
+# Copy to config.toml and edit. Secrets come from environment variables, never from this file.
+database = "waf_inventory.db"          # or any SQLAlchemy URL, e.g. postgresql+psycopg://user@host/db
+
+[discovery]
+collapse_threshold = 10
+min_hits = 5
+openapi_specs = []                     # e.g. ["specs/*.json"]: enables shadow / dormant API findings
+
+[discovery.overrides]
+# "shop.example.com" = ["/api/users/{username}"]
+
+# Azure WAF (App Gateway v2 + Front Door Std/Premium). Auth: DefaultAzureCredential
+# (managed identity, or AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET, or `az login`).
+# Needs Reader on the subscriptions and Log Analytics Reader on the workspaces.
+[[sources]]
+name = "azure-prod"
+type = "azure"
+subscriptions = []                     # empty = every subscription the identity can read
+log_workspaces = []                    # Log Analytics workspace IDs (GUIDs) receiving AppGW / Front Door access logs
+log_days = 30
+
+# F5 BIG-IP over iControl REST with a read-only Auditor account.
+[[sources]]
+name = "dc1-bigip01"
+type = "f5_rest"
+host = "10.0.0.5"                      # management address
+username = "waf-inventory"
+password_env = "F5_DC1_PASSWORD"
+ca_cert = "certs/dc1-bigip01.pem"      # the device's management certificate (pinned); omit for a publicly trusted cert
+export = true                          # declarative ASM export (needs TMOS 15.1+); falls back to REST subcollections
+
+# F5 BIG-IP offline: a folder with bigip.conf (or `tmsh list ... recursive` output) and ASM policy JSON exports.
+# [[sources]]
+# name = "dc2-bigip01 (offline)"
+# type = "f5_offline"
+# path = "exports/dc2"
+
+# Any other access logs (F5 request logging via SIEM export, etc.) as JSONL or CSV with columns
+# host, method, path, status, content_type, user_agent, hits, first_seen, last_seen.
+# [[sources]]
+# name = "siem-export"
+# type = "logs"
+# path = "logs/*.jsonl"

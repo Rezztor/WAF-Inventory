@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% from "_macros.html" import grid %}
+{% block body %}
+<h1>Overview</h1>
+<div class="cards">
+  <a class="card" href="/t/applications" style="text-decoration:none;color:inherit"><div class="n">{{ summary.applications }}</div><div class="l">applications</div></a>
+  <div class="card"><div class="n">{{ summary.coverage }}%</div><div class="l">web listeners in blocking mode</div></div>
+  <a class="card" href="/t/policies" style="text-decoration:none;color:inherit"><div class="n">{{ summary.policies }}</div><div class="l">WAF policies · {{ summary.gateways }} gateways</div></a>
+  <a class="card" href="/t/endpoints?kind=api" style="text-decoration:none;color:inherit"><div class="n">{{ summary.api_endpoints }}</div><div class="l">API endpoints ({{ summary.endpoints }} total)</div></a>
+  <a class="card" href="/t/findings?severity=high" style="text-decoration:none;color:inherit"><div class="n">{{ summary.findings.high }}</div><div class="l">high findings · {{ summary.findings.medium }} medium · {{ summary.findings.low }} low</div></a>
+</div>
+
+<h2>WAF mode of web listeners</h2>
+<div class="cards">{% for m, n in summary.modes.items() %}<a class="card" href="/t/applications?mode={{ m }}" style="text-decoration:none;color:inherit"><div class="n">{{ n }}</div><div class="l"><span class="b {{ m }}">{{ m }}</span></div></a>{% endfor %}</div>
+
+<h2>Top findings</h2>
+{{ grid("findings", top) }}
+
+<h2>Sources</h2>
+{{ grid("sources", sources) }}
+
+<h2>Export</h2>
+<div class="ex"><a href="/export/report.html">Full HTML report</a> · <a href="/export/inventory.xlsx">Excel (all sheets)</a> · each list page also exports CSV / JSON / Excel</div>
+{% endblock %}
