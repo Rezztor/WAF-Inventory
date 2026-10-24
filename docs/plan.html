@@ -1,0 +1,858 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WAF Inventory Plan</title><style>
+:root{--bg:#fbfaf7;--fg:#1d1f23;--muted:#5d636d;--line:#e3e0d8;--card:#fff;--accent:#2f5bd3;--code:#f2f0ea;
+ --core:#e8eefc;--db:#eaf5ee;--out:#fdf1e4;--dim:#f1f0ec}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15171b;--fg:#e6e6e3;--muted:#a0a5ad;--line:#2c3038;
+ --card:#1c1f24;--accent:#86a6ff;--code:#22262c;--core:#1e2a45;--db:#1b3326;--out:#3a2b1a;--dim:#23262b}}
+:root[data-theme="dark"]{--bg:#15171b;--fg:#e6e6e3;--muted:#a0a5ad;--line:#2c3038;--card:#1c1f24;--accent:#86a6ff;
+ --code:#22262c;--core:#1e2a45;--db:#1b3326;--out:#3a2b1a;--dim:#23262b}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+a{color:var(--accent)} a:not(nav a){overflow-wrap:anywhere}
+.wrap{display:grid;grid-template-columns:240px minmax(0,1fr);gap:48px;max-width:1240px;margin:0 auto;padding:32px 24px}
+nav{position:sticky;top:24px;align-self:start;font-size:14px}
+nav b{display:block;margin-bottom:8px;color:var(--muted);font-size:12px;letter-spacing:.06em;text-transform:uppercase}
+nav ol{margin:0;padding-left:0;list-style:none} nav li{margin:2px 0}
+nav a{display:block;padding:4px 8px;border-radius:6px;text-decoration:none;color:var(--fg)} nav a:hover{background:var(--code)}
+header h1{font-size:2rem;line-height:1.2;margin:0 0 4px}
+main h2{margin-top:2.6em;padding-top:.6em;border-top:1px solid var(--line);scroll-margin-top:16px}
+main h3{margin-top:1.8em}
+blockquote{margin:0 0 1em;padding:8px 16px;border-left:3px solid var(--accent);background:var(--card);color:var(--muted);border-radius:0 8px 8px 0}
+code{font:13.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--code);padding:1px 5px;border-radius:4px}
+:not(pre)>code{overflow-wrap:anywhere}
+pre{background:var(--code);padding:14px 16px;border-radius:8px;margin:0} pre code{padding:0;background:none}
+.tw{overflow-x:auto;margin:1em 0}
+table{border-collapse:collapse;width:100%;font-size:14.5px;background:var(--card)}
+th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top} th{background:var(--code)}
+li.task{list-style:none;margin-left:-1.3em} li.task input{margin-right:6px}
+.diagram{margin:1em 0;padding:12px;background:var(--card);border:1px solid var(--line);border-radius:10px}
+.diagram svg{width:100%;height:auto;display:block}
+.diagram .b{fill:var(--card);stroke:var(--line);stroke-width:1.5} .diagram .core{fill:var(--core)} .diagram .db{fill:var(--db)}
+.diagram .out{fill:var(--out)} .diagram .dim{fill:var(--dim);stroke-dasharray:4 3}
+.diagram .t{fill:var(--fg);font:600 14px system-ui,sans-serif;text-anchor:middle}
+.diagram .s{fill:var(--muted);font:11.5px system-ui,sans-serif;text-anchor:middle}
+.diagram .h{fill:var(--muted);font:600 12px system-ui,sans-serif;text-anchor:middle;letter-spacing:.05em;text-transform:uppercase}
+.diagram .a{stroke:var(--muted);stroke-width:1.3;fill:none} .diagram .ah{fill:var(--muted)}
+@media (max-width:860px){.wrap{grid-template-columns:minmax(0,1fr);gap:16px;padding:20px 16px}nav{position:static;border-bottom:1px solid var(--line);padding-bottom:12px}}
+</style></head>
+<body><div class="wrap">
+<nav aria-label="Contents"><b>Contents</b><ol><li><a href="#1-goal-scope">1. Goal &amp; scope</a></li><li><a href="#2-architecture">2. Architecture</a></li><li><a href="#3-vendor-neutral-data-model">3. Vendor-neutral data model</a></li><li><a href="#4-azure-waf-connector">4. Azure WAF connector</a></li><li><a href="#5-f5-big-ip-connector">5. F5 BIG-IP connector</a></li><li><a href="#6-api-discovery-engine">6. API discovery engine</a></li><li><a href="#7-findings">7. Findings</a></li><li><a href="#8-dashboard-exports">8. Dashboard &amp; exports</a></li><li><a href="#9-roadmap">9. Roadmap</a></li><li><a href="#10-prerequisites-checklist">10. Prerequisites checklist</a></li><li><a href="#11-risks-open-questions">11. Risks &amp; open questions</a></li><li><a href="#12-sources">12. Sources</a></li></ol></nav>
+<main><header><h1>WAF Inventory &amp; API Discovery: Plan</h1></header>
+
+<blockquote>
+<p>Status: <strong>Plan / research complete, no code yet</strong> · Last updated: 2026-10-24 · Markdown version: <a href="PLAN.md"><code>docs/PLAN.md</code></a></p>
+</blockquote>
+<h2 id="1-goal-scope">1. Goal &amp; scope</h2>
+<p>This is a <strong>read-only</strong> tool. It connects to WAF products and inventories every web app and API published through them. For each app it answers three questions:</p>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Question</th>
+<th>What we capture</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>What is published?</strong></td>
+<td>Hostnames/FQDNs, listeners and virtual servers (IP:port, TLS/SNI), URL path routes, backends and origins</td>
+</tr>
+<tr>
+<td><strong>How is the WAF configured for it?</strong></td>
+<td>Mode (detect/block), managed rule sets and versions, disabled rules and overrides, exclusions, custom, rate-limit, geo and IP rules, request size and file limits, bot protection, allowed URLs, methods, file types and parameters. Each is resolved to the <strong>effective policy per host and path</strong>.</td>
+</tr>
+<tr>
+<td><strong>Which APIs are actually used?</strong></td>
+<td>API endpoints found in traffic logs: <code>method + host + path template</code>, first and last seen, hit count, status codes, content types, query parameter names. Exported as <strong>OpenAPI</strong>.</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Phase 1 vendors:</strong></p>
+<ul>
+<li><strong>Azure WAF:</strong> Application Gateway v2 and Front Door Standard/Premium. Classic Front Door gets basic support only, because it retires on 31 Mar 2027.</li>
+<li><strong>F5 BIG-IP on-prem:</strong> LTM plus ASM / Advanced WAF, read over iControl REST (live) <strong>or</strong> from offline config files.</li>
+</ul>
+<p><strong>Later:</strong> Cloudflare, AWS WAF, Akamai and Imperva, added through the same connector interface.</p>
+<p><strong>Decisions made:</strong></p>
+<ul>
+<li>F5 is collected both live (REST) and offline (config files).</li>
+<li>Traffic logs come from <strong>Azure Log Analytics</strong>. F5 logs are not centralised yet; see §5.6.</li>
+<li>The MVP is a <strong>web dashboard</strong> with export to <strong>HTML, JSON, CSV and Excel</strong>.</li>
+</ul>
+
+<h2 id="2-architecture">2. Architecture</h2>
+<figure class="diagram"><svg viewBox="0 0 900 330" role="img" aria-label="Architecture: read-only connectors feed a normalize, discovery and findings core, stored in SQLite, served by a FastAPI dashboard with exports"><defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" class="ah"/></marker></defs><text class="h" x="120" y="22">Connectors (read-only)</text><text class="h" x="450" y="22">Core</text><text class="h" x="772" y="22">UI / Output</text><rect class="b" x="20" y="40" width="200" height="44" rx="8"/><text class="t" x="120.0" y="59">azure_config</text><text class="s" x="120.0" y="75">ARG + ARM SDKs</text><path class="a" d="M222 62 L318 162" marker-end="url(#ah)"/><rect class="b" x="20" y="96" width="200" height="44" rx="8"/><text class="t" x="120.0" y="115">azure_logs</text><text class="s" x="120.0" y="131">Log Analytics KQL</text><path class="a" d="M222 118 L318 162" marker-end="url(#ah)"/><rect class="b" x="20" y="152" width="200" height="44" rx="8"/><text class="t" x="120.0" y="171">f5_rest</text><text class="s" x="120.0" y="187">iControl REST</text><path class="a" d="M222 174 L318 162" marker-end="url(#ah)"/><rect class="b" x="20" y="208" width="200" height="44" rx="8"/><text class="t" x="120.0" y="227">f5_offline</text><text class="s" x="120.0" y="243">bigip.conf + ASM export</text><path class="a" d="M222 230 L318 162" marker-end="url(#ah)"/><rect class="b dim" x="20" y="264" width="200" height="44" rx="8"/><text class="t" x="120.0" y="283">later…</text><text class="s" x="120.0" y="299">f5_logs · Cloudflare · AWS · Akamai</text><path class="a" d="M222 286 L318 162" marker-end="url(#ah)"/><rect class="b core" x="330" y="70" width="240" height="44" rx="8"/><text class="t" x="450.0" y="89">normalize</text><text class="s" x="450.0" y="105">pydantic models</text><rect class="b core" x="330" y="126" width="240" height="44" rx="8"/><text class="t" x="450.0" y="145">discovery engine</text><text class="s" x="450.0" y="161">path templates · classify</text><rect class="b core" x="330" y="182" width="240" height="44" rx="8"/><text class="t" x="450.0" y="201">findings engine</text><text class="s" x="450.0" y="217">posture · shadow API</text><rect class="b db" x="330" y="250" width="240" height="44" rx="8"/><text class="t" x="450.0" y="269">SQLite (Postgres-ready)</text><text class="s" x="450.0" y="285">snapshots · raw JSON + hash</text><path class="a" d="M450 236 L450 248" marker-end="url(#ah)"/><path class="a" d="M572 272 L648 120" marker-end="url(#ah)"/><path class="a" d="M572 272 L648 220" marker-end="url(#ah)"/><rect class="b out" x="660" y="98" width="225" height="44" rx="8"/><text class="t" x="772.5" y="117">Dashboard</text><text class="s" x="772.5" y="133">FastAPI + Jinja2 + HTMX</text><rect class="b out" x="660" y="198" width="225" height="44" rx="8"/><text class="t" x="772.5" y="217">Exports</text><text class="s" x="772.5" y="233">HTML · JSON · CSV · XLSX · OpenAPI</text></svg></figure>
+<p><strong>Stack</strong></p>
+<ul>
+<li>Python 3.12 and pydantic v2.</li>
+<li>SQLAlchemy 2 on SQLite, with a schema kept portable to Postgres.</li>
+<li>FastAPI + Jinja2 + HTMX. The dashboard is server-rendered, so there is no SPA build step.</li>
+<li>Typer CLI: <code>waf-inv collect | discover | serve | export</code>.</li>
+<li>Azure: <code>azure-identity</code>, <code>azure-mgmt-resourcegraph</code>, <code>azure-mgmt-network</code>, <code>azure-mgmt-cdn</code>, <code>azure-mgmt-frontdoor</code>, <code>azure-monitor-query</code>.</li>
+<li>F5: plain <code>httpx</code> behind a thin wrapper. <code>f5-sdk</code> and <code>bigrest</code> are not used because both are unmaintained.</li>
+<li>Excel output: <code>openpyxl</code>. CSV and JSON use the standard library.</li>
+</ul>
+<p><strong>Connector contract</strong></p>
+<ul>
+<li>Each connector implements one small <code>Protocol</code>:<ul>
+<li><code>collect_config() -&gt; Snapshot</code> returns the inventory and policies.</li>
+<li><code>iter_traffic(since) -&gt; Iterable[HttpObservation]</code> is optional and only for log sources.</li>
+</ul>
+</li>
+<li>Connectors are registered in a plain dict. Entry-point plugins can wait until a third vendor arrives.</li>
+</ul>
+<p><strong>Security of the tool itself</strong></p>
+<ul>
+<li>Read-only by construction. The HTTP layer allows only GET, plus the F5 export-policy task POST. That POST creates a file and does not change config.</li>
+<li>Azure authenticates with <code>DefaultAzureCredential</code> (managed identity or service principal). F5 credentials come from env/.env or Key Vault. Secrets are never written to the DB or to reports.</li>
+<li>Query-string <strong>values are redacted</strong>; only parameter names are stored, because URLs often carry tokens.</li>
+<li>F5 self-signed management certs are pinned by fingerprint or CA. TLS verification is never turned off.</li>
+</ul>
+
+<h2 id="3-vendor-neutral-data-model">3. Vendor-neutral data model</h2>
+<div class="tw"><pre><code>Source        (id, kind[azure|f5_rest|f5_offline|…], name, last_sync, status)
+Gateway       (id, source_id, vendor, kind[appgw|afd|afd_classic|bigip], native_id, region, version, ha_group)
+Application   (id, fqdn, aliases[], env, owner)                         -- key = normalized FQDN
+Listener      (id, gateway_id, protocol, ip, port, hostnames[], tls_cert, native_id)   -- AppGW listener / AFD domain / F5 virtual server
+Route         (id, listener_id, path_pattern, match_type, backend_id, policy_id)       -- path rule / AFD route / LTM policy rule / iRule
+Backend       (id, gateway_id, members[], protocol, port)                               -- backend pool / origin group / F5 pool
+WafPolicy     (id, gateway_id, native_id, name, vendor, raw_json, raw_hash, fetched_at)
+PolicySetting (policy_id, scope[gateway|listener|path], category, key, value_json)
+     category ∈ mode, rulesets, disabled_rules, exclusions, custom_rules, rate_limit, geo,
+                ip_lists, size_limits, bot, allowed_urls, allowed_methods, filetypes, parameters, tls
+ApiEndpoint   (id, app_id, method, path_template, kind[api|web|static|ws|unknown], confidence,
+               first_seen, last_seen, hits, status_counts{}, content_types[], query_params[])
+EndpointObservation (app_id, method, template_id, day, hits, status_counts)    -- daily rollup
+Finding       (id, rule_id, severity, subject_type, subject_id, evidence_json, state, first_seen, last_seen)
+</code></pre></div>
+<ul>
+<li><strong>Raw vendor JSON and its hash</strong> are stored on every snapshot. This lets us diff policy versions over time and re-normalize later without calling the vendor again.</li>
+<li><strong>Effective policy</strong> is computed for each (listener, route) pair, so every host and path shows exactly which settings apply to it.</li>
+<li><strong>Logs are stored as daily aggregates</strong>, never as raw lines. That keeps storage cheap and avoids holding personal data.</li>
+<li><strong>Findings are idempotent</strong>: the key is <code>(rule_id, subject)</code>, so a finding can be suppressed and later reopened.</li>
+<li>No standard WAF-policy schema exists. The <code>PolicySetting</code> categories above are our own normalization. For log ingestion, OCSF <em>HTTP Activity</em> (class 4002) or ECS <code>http.*</code>/<code>url.*</code> is a reasonable shape.</li>
+</ul>
+
+<h2 id="4-azure-waf-connector">4. Azure WAF connector</h2>
+<h3 id="41-enumeration-with-azure-resource-graph-all-subscriptions-in-the-tenant">4.1 Enumeration with Azure Resource Graph (all subscriptions in the tenant)</h3>
+<p>ARG indexes Application Gateways, both WAF policy types, Front Door classic, <code>cdn/profiles</code> and <code>afdEndpoints</code>. It does <strong>not</strong> index AFD routes, custom domains, origin groups, rule sets or security policies. Those are fetched per profile through the SDK.</p>
+<div class="tw"><pre><code class="language-kusto">// App Gateway listeners + policy at gateway and listener level
+resources
+| where type =~ 'microsoft.network/applicationgateways'
+| extend gwPolicy = tostring(properties.firewallPolicy.id), sku = tostring(properties.sku.tier)
+| mv-expand limit 2000 l = properties.httpListeners
+| project subscriptionId, resourceGroup, gw = name, sku, gwPolicy,
+    listener = tostring(l.name), protocol = tostring(l.properties.protocol),
+    hostNames = iff(isnotempty(l.properties.hostNames), l.properties.hostNames, pack_array(l.properties.hostName)),
+    listenerPolicy = tostring(l.properties.firewallPolicy.id)
+</code></pre></div>
+<div class="tw"><pre><code class="language-kusto">// App Gateway path rules (per-URI policy)
+resources
+| where type =~ 'microsoft.network/applicationgateways'
+| mv-expand limit 2000 m = properties.urlPathMaps
+| mv-expand limit 2000 r = m.properties.pathRules
+| project gw = name, pathMap = tostring(m.name), rule = tostring(r.name), paths = r.properties.paths,
+    pool = tostring(r.properties.backendAddressPool.id), pathPolicy = tostring(r.properties.firewallPolicy.id)
+</code></pre></div>
+<div class="tw"><pre><code class="language-kusto">// All WAF policies (both flavours) + Front Door profiles/endpoints
+resources
+| where type in~ ('microsoft.network/applicationgatewaywebapplicationfirewallpolicies',
+                  'microsoft.network/frontdoorwebapplicationfirewallpolicies',
+                  'microsoft.cdn/profiles', 'microsoft.cdn/profiles/afdendpoints', 'microsoft.network/frontdoors')
+| project id, type, name, subscriptionId, sku, mode = tostring(properties.policySettings.mode),
+    ruleSets = properties.managedRules.managedRuleSets, customRules = properties.customRules
+</code></pre></div>
+<p><strong>ARG limits:</strong></p>
+<ul>
+<li>Pages are 1,000 rows; follow <code>skip_token</code>.</li>
+<li>Throttling allows 15 queries per 5 s; honour the <code>x-ms-user-quota-*</code> headers.</li>
+<li>Each <code>mv-expand</code> is capped at 2,000 rows.</li>
+<li>Scope is one tenant per credential.</li>
+<li>ARG is eventually consistent, so the final policy read is an ARM GET.</li>
+</ul>
+<h3 id="42-authoritative-detail-python-sdk">4.2 Authoritative detail (Python SDK)</h3>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Package (default api-version)</th>
+<th>Calls</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>App Gateway + WAF policy</td>
+<td><code>azure-mgmt-network</code> (2026-03-01)</td>
+<td><code>application_gateways.list_all()</code>, <code>web_application_firewall_policies.list_all()</code>, <code>application_gateways.list_available_waf_rule_sets()</code></td>
+</tr>
+<tr>
+<td>Front Door Std/Premium</td>
+<td><code>azure-mgmt-cdn</code> (2025-12-01)</td>
+<td><code>profiles.list()</code>, <code>afd_endpoints.list_by_profile</code>, <code>routes.list_by_endpoint</code>, <code>afd_custom_domains.list_by_profile</code>, <code>afd_origin_groups/afd_origins</code>, <code>rule_sets/rules</code>, <strong><code>security_policies.list_by_profile</code></strong></td>
+</tr>
+<tr>
+<td>AFD WAF policy</td>
+<td><code>azure-mgmt-frontdoor</code> (2025-10-01)</td>
+<td><code>policies.list_by_subscription()</code>, <code>managed_rule_sets.list()</code>, classic: <code>front_doors.list()</code></td>
+</tr>
+<tr>
+<td>Logs</td>
+<td><code>azure-monitor-query</code></td>
+<td><code>LogsQueryClient.query_workspace</code> / <code>query_resource</code></td>
+</tr>
+<tr>
+<td>Diagnostic settings</td>
+<td><code>azure-mgmt-monitor</code></td>
+<td><code>diagnostic_settings.list(resource_uri)</code> shows which workspace holds each resource's logs</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="43-resolving-the-effective-policy">4.3 Resolving the effective policy</h3>
+<ul>
+<li><strong>App Gateway:</strong><ul>
+<li>A policy can be attached at three levels: the gateway (global), a listener (per site) or a path rule (per URI).</li>
+<li>The most specific one wins: <strong>path rule → listener → gateway</strong>.</li>
+<li>Cross-check against the policy's back-links (<code>applicationGateways[]</code>, <code>httpListeners[]</code>, <code>pathBasedRules[]</code>).</li>
+<li>Old gateways may still carry the legacy <code>webApplicationFirewallConfiguration</code>; report and flag it.</li>
+<li><strong>L4 TLS/TCP listeners are not WAF-inspected.</strong></li>
+</ul>
+</li>
+<li><strong>Front Door Std/Premium:</strong><ul>
+<li>The WAF follows <strong>domains</strong>, not routes. Resolve <code>route → customDomain (or default *.azurefd.net) → securityPolicy.associations → WAF policy</code>.</li>
+<li>A domain with no security policy is <strong>unprotected</strong>.</li>
+<li>The WAF policy also has back-links in <code>securityPolicyLinks[]</code>.</li>
+</ul>
+</li>
+<li>Policies may live in another subscription or resource group. Resolve each one by its full ID and flag any we cannot reach.</li>
+</ul>
+<h3 id="44-waf-settings-captured">4.4 WAF settings captured</h3>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>App Gateway WAF policy</th>
+<th>Front Door WAF policy</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Mode and state</td>
+<td><code>policySettings.mode</code> (Detection/Prevention), <code>state</code></td>
+<td><code>policySettings.mode</code>, <code>enabledState</code></td>
+</tr>
+<tr>
+<td>Body and size</td>
+<td><code>requestBodyCheck</code>, <code>requestBodyInspectLimitInKB</code>, <code>maxRequestBodySizeInKb</code>, <code>requestBodyEnforcement</code>, <code>fileUploadLimitInMb</code>, <code>fileUploadEnforcement</code></td>
+<td><code>requestBodyCheck</code></td>
+</tr>
+<tr>
+<td>Managed rules</td>
+<td><code>managedRules.managedRuleSets[]</code> (type and version: DRS 2.2/2.1, OWASP CRS 3.x, Microsoft_BotManagerRuleSet), <code>ruleGroupOverrides</code>, read-only <strong><code>computedDisabledRules</code></strong></td>
+<td><code>managedRuleSets[]</code> (DRS 2.x, BotManager 1.0/1.1; Premium only), <code>ruleSetAction</code>, <code>ruleGroupOverrides</code></td>
+</tr>
+<tr>
+<td>Exclusions</td>
+<td><code>managedRules.exclusions[]</code></td>
+<td>exclusions at rule-set, rule-group or rule level</td>
+</tr>
+<tr>
+<td>Custom rules</td>
+<td><code>customRules[]</code> (MatchRule/RateLimitRule, <code>rateLimitThreshold</code>/<code>Duration</code>, <code>groupByUserSession</code>, IPMatch/GeoMatch conditions, action)</td>
+<td><code>customRules.rules[]</code> (same, plus <code>groupBy</code> and Premium grouping by country/ASN/JA4)</td>
+</tr>
+<tr>
+<td>Other</td>
+<td><code>customBlockResponse*</code>, <code>logScrubbing</code>, JS challenge/CAPTCHA expiry</td>
+<td><code>redirectUrl</code>, <code>customBlockResponse*</code>, <code>logScrubbing</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>Caveats on interpreting these settings:</p>
+<ul>
+<li>DRS 2.x and CRS 3.x use <strong>anomaly scoring</strong>, so a "Matched" log line is not a block.</li>
+<li><strong>Detection mode is reported as unprotected.</strong></li>
+<li>Changing the AFD rule-set version resets its overrides.</li>
+</ul>
+<h3 id="45-traffic-and-api-discovery-from-log-analytics">4.5 Traffic and API discovery from Log Analytics</h3>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Category</th>
+<th>Table</th>
+<th>Useful columns</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>App Gateway</td>
+<td><code>ApplicationGatewayAccessLog</code></td>
+<td><code>AGWAccessLogs</code> (or <code>AzureDiagnostics</code>)</td>
+<td>Host, OriginalHost, RequestUri, HttpMethod, HttpStatus, <strong>ContentType</strong>, UserAgent, ClientIp, ListenerName, RuleName, BackendPoolName, WafPolicyId, WAFMode, TransactionId</td>
+</tr>
+<tr>
+<td>App Gateway</td>
+<td><code>ApplicationGatewayFirewallLog</code></td>
+<td><code>AGWFirewallLogs</code></td>
+<td>RequestUri, Hostname, RuleSetType/Version, RuleId, Action, Message, PolicyScope, TransactionId</td>
+</tr>
+<tr>
+<td>AFD Std/Premium</td>
+<td><code>FrontDoorAccessLog</code></td>
+<td><code>AzureDiagnostics</code> (<code>ResourceProvider == "MICROSOFT.CDN"</code>)</td>
+<td>hostName_s, requestUri_s, httpMethod_s, httpStatusCode_s, userAgent_s, endpoint_s, originName_s, trackingReference_s</td>
+</tr>
+<tr>
+<td>AFD Std/Premium</td>
+<td><code>FrontDoorWebApplicationFirewallLog</code></td>
+<td><code>AzureDiagnostics</code></td>
+<td>host_s, requestUri_s, ruleName_s, action_s, policy_s, policyMode_s, trackingReference_s</td>
+</tr>
+</tbody>
+</table></div>
+<p>Run <code>getschema</code> on the live workspace before hard-coding column names. The firewall logs are joined to the access logs on <code>TransactionId</code> (App Gateway) or <code>TrackingReference</code> (AFD).</p>
+<div class="tw"><pre><code class="language-kusto">// App Gateway: aggregate server-side, never pull raw rows
+AGWAccessLogs
+| where TimeGenerated &gt; ago(30d)
+| extend path = tostring(split(RequestUri, &quot;?&quot;)[0])
+| summarize hits = count(), statuses = make_set(HttpStatus, 20), ctypes = make_set(ContentType, 5),
+            qparams = make_set(extract_all(@&quot;[?&amp;]([^=&amp;]+)=&quot;, RequestUri), 20),
+            firstSeen = min(TimeGenerated), lastSeen = max(TimeGenerated)
+    by Host, HttpMethod, path, ListenerName, RuleName, _ResourceId, day = bin(TimeGenerated, 1d)
+</code></pre></div>
+<div class="tw"><pre><code class="language-kusto">// Front Door Std/Premium
+AzureDiagnostics
+| where ResourceProvider == &quot;MICROSOFT.CDN&quot; and Category == &quot;FrontDoorAccessLog&quot; and TimeGenerated &gt; ago(30d)
+| extend path = tostring(parse_url(requestUri_s).Path)
+| summarize hits = count(), statuses = make_set(httpStatusCode_s, 20)
+    by host = hostName_s, method = httpMethod_s, path, endpoint_s, day = bin(TimeGenerated, 1d)
+</code></pre></div>
+<p>Limits of log-based discovery:</p>
+<ul>
+<li><strong>Request and response bodies are never logged</strong>, so we get endpoints but no JSON schemas or GraphQL operation names.</li>
+<li>Only endpoints that received traffic within the retention window are visible. The default is 30 days; 90 is recommended.</li>
+<li>Long time ranges are split into chunks and aggregated in KQL, to stay inside result size limits.</li>
+<li>Native Azure features do not fill this gap. Defender for APIs only covers APIs in <strong>API Management</strong>, and Defender CSPM API posture only covers Functions and Logic Apps. Neither discovers APIs from App Gateway or AFD traffic. They are useful only to import OpenAPI specs from APIM, to enrich our results.</li>
+</ul>
+<h3 id="46-access-needed">4.6 Access needed</h3>
+<ul>
+<li><strong>Reader</strong> at management-group or subscription scope, for ARG and every config GET.</li>
+<li><strong>Log Analytics Reader</strong> on each workspace.</li>
+<li>Authentication through <code>DefaultAzureCredential</code>. Use one credential per tenant, or Azure Lighthouse.</li>
+</ul>
+
+<h2 id="5-f5-big-ip-connector">5. F5 BIG-IP connector</h2>
+<h3 id="51-authentication-and-safe-use-of-icontrol-rest">5.1 Authentication and safe use of iControl REST</h3>
+<ul>
+<li><code>POST /mgmt/shared/authn/login {"username","password","loginProviderName":"tmos"}</code> returns a token, sent as the <code>X-F5-Auth-Token</code> header.<ul>
+<li>Tokens last 1,200 s; extend with PATCH up to 36,000 s.</li>
+<li>There is a limit of 100 tokens per user. Reuse one token per run and DELETE it at the end.</li>
+</ul>
+</li>
+<li><strong>Role:</strong> a dedicated <strong>Auditor</strong> account (read-only on all config) with access to all partitions.<ul>
+<li>The Guest role often returns 401 on REST.</li>
+<li>There is no built-in ASM-only read-only role.</li>
+</ul>
+</li>
+<li>restjavad is a single, fragile JVM. Keep <strong>at most 2–4 concurrent requests</strong> and back off on 503.</li>
+<li>Self-signed management certificates: pin by fingerprint or CA.</li>
+</ul>
+<h3 id="52-inventory-endpoints-ltm">5.2 Inventory endpoints (LTM)</h3>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Purpose</th>
+<th>Endpoint</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Identity and modules</td>
+<td><code>/mgmt/tm/sys/version</code>, <code>/mgmt/tm/sys/global-settings</code>, <code>/mgmt/tm/sys/provision</code> (is ASM/AFM/AVR provisioned?), <code>/mgmt/toc</code></td>
+</tr>
+<tr>
+<td>HA</td>
+<td><code>/mgmt/tm/cm/device</code>, <code>/mgmt/tm/cm/device-group</code> (sync-failover; ASM sync flag), <code>/mgmt/tm/cm/sync-status</code>. Collect once per sync group. If ASM sync is off, collect ASM from every member.</td>
+</tr>
+<tr>
+<td>Partitions and route domains</td>
+<td><code>/mgmt/tm/auth/partition</code>, <code>/mgmt/tm/net/route-domain</code>. A destination such as <code>/Common/10.1.1.1%2:443</code> means route domain 2.</td>
+</tr>
+<tr>
+<td>Virtual servers</td>
+<td><code>/mgmt/tm/ltm/virtual?expandSubcollections=true</code>: destination, pool, <code>rules[]</code>, profiles (including <code>websecurity</code>, which means ASM is attached; also bot-defense, DoS, http, client-ssl), <code>policiesReference</code>, <code>securityLogProfiles[]</code></td>
+</tr>
+<tr>
+<td>Pools</td>
+<td><code>/mgmt/tm/ltm/pool?expandSubcollections=true</code></td>
+</tr>
+<tr>
+<td>LTM policies</td>
+<td><code>/mgmt/tm/ltm/policy?expandSubcollections=true</code>: conditions <code>httpHost</code>/<code>httpUri</code> and actions <code>asm enable policy …</code>, <code>forward pool</code>. Ignore <code>/Common/Drafts</code>.</td>
+</tr>
+<tr>
+<td>iRules</td>
+<td><code>/mgmt/tm/ltm/rule</code>: scan for <code>ASM::enable/disable</code>, <code>HTTP::host</code>, <code>HTTP::uri</code> and <code>pool</code></td>
+</tr>
+<tr>
+<td>TLS/SNI</td>
+<td><code>/mgmt/tm/ltm/profile/client-ssl</code> (<code>serverName</code>, <code>sniDefault</code>, <code>certKeyChain</code>), <code>/mgmt/tm/sys/file/ssl-cert</code> (CN/SAN and expiry)</td>
+</tr>
+<tr>
+<td>Security profiles</td>
+<td><code>/mgmt/tm/security/bot-defense/profile</code> (14.1+), <code>/mgmt/tm/security/dos/profile</code>, <code>/mgmt/tm/security/log/profile</code></td>
+</tr>
+<tr>
+<td>AS3 (if installed)</td>
+<td><code>/mgmt/shared/appsvcs/info</code>, then <code>GET /mgmt/shared/appsvcs/declare</code>. This only covers AS3-managed apps, so it does not replace the <code>/mgmt/tm</code> sweep.</td>
+</tr>
+</tbody>
+</table></div>
+<p>Use OData <code>$select</code>, <code>$filter</code>, <code>$top</code> and <code>$skip</code> for paging. <code>expandSubcollections</code> is <strong>ignored</strong> on <code>/mgmt/tm/asm/policies</code>.</p>
+<h3 id="53-waf-configuration-asm-advanced-waf">5.3 WAF configuration (ASM / Advanced WAF)</h3>
+<p>"Advanced WAF" is the licence name. The module is still <code>asm</code>, and every endpoint is under <code>/mgmt/tm/asm/...</code>.</p>
+<div class="tw"><pre><code># 1. List policies
+GET  /mgmt/tm/asm/policies?$select=id,name,fullPath,virtualServers,manualVirtualServers,
+       enforcementMode,active,type,parentPolicyName,applicationLanguage,versionDatetime
+
+# 2. Export each policy as declarative JSON (TMOS 15.1+)
+POST /mgmt/tm/asm/tasks/export-policy
+     {&quot;filename&quot;:&quot;&lt;id&gt;.json&quot;,&quot;format&quot;:&quot;json&quot;,&quot;minimal&quot;:false,
+      &quot;policyReference&quot;:{&quot;link&quot;:&quot;<a href="https://localhost/mgmt/tm/asm/policies/&lt;id&gt;&quot;}}">https://localhost/mgmt/tm/asm/policies/&lt;id&gt;&quot;}}</a>
+GET  /mgmt/tm/asm/tasks/export-policy/&lt;taskId&gt;        # poll until COMPLETED
+GET  /mgmt/tm/asm/file-transfer/downloads/&lt;id&gt;.json   # 1 MB chunks via Content-Range
+</code></pre></div>
+<ol>
+<li><strong>List policies</strong> with <code>$select</code> to get enforcement mode, attached virtual servers, active flag and parent policy.</li>
+<li><strong>Export each policy as declarative JSON.</strong> This is the best machine-readable source.<ul>
+<li><code>minimal:false</code> returns the effective values, not just the differences from the template.</li>
+<li>Downloads larger than <strong>1,048,576 bytes are truncated</strong> unless fetched in chunks. Validate the JSON after joining the chunks.</li>
+</ul>
+</li>
+<li><strong>Fallback</strong>, if Auditor cannot run the export task: GET the subcollections under <code>/mgmt/tm/asm/policies/&lt;id&gt;/</code>: <code>urls</code>, <code>parameters</code>, <code>filetypes</code>, <code>methods</code>, <code>headers</code>, <code>cookies</code>, <code>host-names</code>, <code>signature-sets</code>, <code>blocking-settings/violations</code>, <code>blocking-settings/evasions</code>, <code>blocking-settings/http-protocols</code>, <code>whitelist-ips</code>, <code>geolocation-enforcement</code>, <code>data-guard</code>, <code>brute-force-attack-preventions</code>, <code>json-profiles</code>, <code>xml-profiles</code>, <code>policy-builder</code>, <code>open-api-files</code>. Always page <code>signatures</code> and <code>suggestions</code>.</li>
+</ol>
+<p><strong>Settings normalized from the export:</strong></p>
+<ul>
+<li>Enforcement mode (transparent or blocking), and whether the policy is active.</li>
+<li>Signature sets, plus the signatures still <strong>in staging</strong>.</li>
+<li>Learning mode.</li>
+<li>Allowed URLs, including the <code>*</code> wildcard; allowed methods; file types; parameters; headers and cookies.</li>
+<li>Violations and their blocking flags (alarm/block).</li>
+<li>Evasions and HTTP-protocol checks.</li>
+<li>Data guard, brute force, IP whitelist, geolocation, IP intelligence.</li>
+<li>JSON/XML profiles and imported OpenAPI files.</li>
+<li>Bot-defense and DoS profiles, from the virtual server.</li>
+<li>Parent/child inheritance (the child export holds the effective settings).</li>
+</ul>
+<h3 id="54-mapping-a-policy-to-an-app-host-and-path">5.4 Mapping a policy to an app (host and path)</h3>
+<p>Three sources are combined:</p>
+<ol>
+<li>The policy's <code>virtualServers[]</code>.</li>
+<li>LTM policy rules on the virtual server, whose <strong><code>httpHost</code>/<code>httpUri</code> conditions</strong> decide which ASM policy applies to which host or path. One virtual server can carry several ASM policies.</li>
+<li>iRules that call <code>ASM::enable &lt;policy&gt;</code> or <code>ASM::disable</code>.</li>
+</ol>
+<p>The <code>websecurity</code> profile on a virtual server confirms ASM is in the traffic path. Hostnames come from the LTM policy conditions, the client-ssl SNI and the certificate SAN.</p>
+<h3 id="55-offline-mode-no-rest-access">5.5 Offline mode (no REST access)</h3>
+<ul>
+<li><strong>Inputs:</strong><ul>
+<li><code>bigip.conf</code> / <code>bigip_base.conf</code>, or <code>tmsh -q -c "cd /; list ltm virtual recursive all-properties"</code> output (also for pool, policy, rule and profile client-ssl).</li>
+<li><strong>ASM policy exports</strong> in JSON or XML.</li>
+<li>UCS or qkview archives, which are unpacked to read <code>/config/bigip*.conf</code>.</li>
+</ul>
+</li>
+<li><strong>Parser:</strong> brace-depth tokenizer, because blocks nest. It produces the same <code>Snapshot</code> as the REST connector.</li>
+<li><code>bigip.conf</code> only holds an ASM <em>stub</em>, not the policy content. The full WAF detail needs the policy exports.</li>
+</ul>
+<h3 id="56-api-discovery-from-f5">5.6 API discovery from F5</h3>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Requires change on BIG-IP?</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ASM learned entities (<code>urls</code>, <code>parameters</code>, <code>suggestions</code>)</td>
+<td>No</td>
+<td>Read-only. Shows which URLs ASM has learned, as explicit or wildcard entries.</td>
+</tr>
+<tr>
+<td>ASM local request log <code>GET /mgmt/tm/asm/events/requests</code></td>
+<td>No</td>
+<td>About 3M records, usually illegal requests only, slow at scale. Gives a sample only.</td>
+</tr>
+<tr>
+<td>AVR analytics (if provisioned)</td>
+<td>No</td>
+<td>Per-URL statistics.</td>
+</tr>
+<tr>
+<td><strong>ASM remote logging, "all requests"</strong> (key-value/CEF to syslog/SIEM)</td>
+<td><strong>Yes</strong> (log profile)</td>
+<td>Recommended v2 path. Fields include method, uri, query_string, response_code, vs_name, policy_name and the request headers (truncated).</td>
+</tr>
+<tr>
+<td>LTM Request Logging profile (HSL)</td>
+<td>Yes</td>
+<td>Covers virtual servers without ASM. Cheap.</td>
+</tr>
+<tr>
+<td>Telemetry Streaming → Kafka/Splunk/HTTP</td>
+<td>Yes (iLX extension)</td>
+<td>Sends to a central sink. It could also go into Log Analytics so it reuses the Azure discovery path.</td>
+</tr>
+</tbody>
+</table></div>
+<p>F5 Distributed Cloud "API Discovery for BIG-IP" and F5 API Security Local Edition are commercial equivalents. They are useful as a benchmark for our output.</p>
+
+<h2 id="6-api-discovery-engine">6. API discovery engine</h2>
+<p>The same engine runs on both Azure and F5 traffic.</p>
+<ol>
+<li><strong>Normalize</strong><ul>
+<li>Lowercase the host and strip the port.</li>
+<li>Split off the query string; keep the sorted <strong>parameter names</strong> only.</li>
+<li>Percent-decode, strip <code>;jsessionid=</code>, and collapse <code>//</code> and trailing <code>/</code>.</li>
+</ul>
+</li>
+<li><strong>Typed segment masks</strong>, applied per segment in this order:</li>
+</ol>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Mask</th>
+<th>Pattern</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>{uuid}</code></td>
+<td><code>^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$</code></td>
+</tr>
+<tr>
+<td><code>{int}</code></td>
+<td><code>^\d+$</code></td>
+</tr>
+<tr>
+<td><code>{hex}</code></td>
+<td><code>^[0-9a-f]{16,}$</code> (ObjectId, MD5, SHA)</td>
+</tr>
+<tr>
+<td><code>{date}</code></td>
+<td><code>^\d{4}-\d{2}-\d{2}</code>, <code>^\d{8}$</code></td>
+</tr>
+<tr>
+<td><code>{email}</code></td>
+<td><code>^[^@/]+@[^@/]+\.[a-z]{2,}$</code></td>
+</tr>
+<tr>
+<td><code>{b64}</code></td>
+<td><code>^[A-Za-z0-9_-]{22,}={0,2}$</code> with mixed case and digits</td>
+</tr>
+<tr>
+<td><code>{token}</code></td>
+<td>Shannon entropy ≥ 3.5 bits/char and length ≥ 12</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>v1</code>, <code>v2.1</code>, <code>api</code>, <code>rest</code> and similar segments stay literal.</p>
+<ol start="3">
+<li><strong>Cardinality collapse.</strong> Build a trie per (host, method).<ul>
+<li>When a node has <strong>≥ 10 distinct literal children</strong> that are not dictionary words and whose subtrees look alike, collapse them into <code>{param}</code>.</li>
+<li>Name the parameter from the parent segment, e.g. <code>/users/{user_id}</code>.</li>
+<li>Never collapse words such as <code>login</code>, <code>search</code> or <code>logout</code>.</li>
+</ul>
+</li>
+<li><strong>Evidence floor.</strong> A template needs <strong>at least 5 hits</strong> to be promoted; anything below that stays <em>unconfirmed</em>. The threshold is configurable. For comparison, Cloudflare uses 500 hits in 10 days.</li>
+<li><strong>Classify</strong> each endpoint as <code>api</code>, <code>web</code>, <code>static</code>, <code>ws</code> or <code>unknown</code>, with a confidence value:</li>
+</ol>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Class</th>
+<th>Signals</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>api</code>, strong</td>
+<td>JSON/XML/grpc content type, or <code>/api</code>, <code>/rest</code>, <code>/v\d+</code>, <code>/graphql</code>, <code>/odata</code>, <code>.asmx</code>, <code>.svc</code>, <code>?wsdl</code></td>
+</tr>
+<tr>
+<td><code>api</code>, medium</td>
+<td>POST, PUT, PATCH or DELETE; <code>api.*</code> host; non-browser user agent (okhttp, axios, python-requests)</td>
+</tr>
+<tr>
+<td><code>static</code></td>
+<td>Asset extensions (js, css, png, …) or <code>/static</code>, <code>/assets</code></td>
+</tr>
+<tr>
+<td><code>ws</code></td>
+<td>Status 101, or <code>/ws</code>, <code>/socket.io</code>, <code>/signalr</code></td>
+</tr>
+<tr>
+<td><code>web</code></td>
+<td>GET with <code>text/html</code> and a browser user agent</td>
+</tr>
+<tr>
+<td><code>unknown</code></td>
+<td>Shown in the UI with a per-host override</td>
+</tr>
+</tbody>
+</table></div>
+<ol start="6">
+<li><strong>User overrides.</strong> Users can force a segment literal or parametrized, rename a parameter, or merge or split templates. Overrides are stored as rules and <strong>re-applied on every run</strong> so results stay stable. This follows the mitmproxy2swagger and Akto merge/de-merge pattern.</li>
+<li><strong>OpenAPI 3.1 export per host.</strong><ul>
+<li>Covers paths, methods, typed path parameters, observed status codes and query parameter names.</li>
+<li>Each operation gets <code>x-discovered</code>, <code>x-first-seen</code>, <code>x-last-seen</code> and <code>x-hit-count</code>.</li>
+<li><strong>No body schemas</strong>, because logs carry no bodies.</li>
+</ul>
+</li>
+</ol>
+
+<h2 id="7-findings">7. Findings</h2>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>Severity</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Host or domain published with <strong>no WAF policy</strong>: AFD domain without a security policy, virtual server without ASM, App Gateway listener with no effective policy</td>
+<td>High</td>
+<td>Config</td>
+</tr>
+<tr>
+<td>Policy in <strong>Detection/transparent</strong> mode, or disabled</td>
+<td>High</td>
+<td>Config</td>
+</tr>
+<tr>
+<td>L4 TLS/TCP listener in front of HTTP apps (not WAF-inspected)</td>
+<td>Medium</td>
+<td>Config</td>
+</tr>
+<tr>
+<td>Outdated managed rule set (e.g. CRS 3.0/3.1), or no bot rule set</td>
+<td>Medium</td>
+<td>Config</td>
+</tr>
+<tr>
+<td>Disabled rules, broad exclusions, signatures still in staging</td>
+<td>Medium</td>
+<td>Config</td>
+</tr>
+<tr>
+<td>ASM allowed URLs still <code>*</code> wildcard (URL enforcement off)</td>
+<td>Medium</td>
+<td>Config</td>
+</tr>
+<tr>
+<td>Request body inspection off, or very large size limits</td>
+<td>Medium</td>
+<td>Config</td>
+</tr>
+<tr>
+<td><strong>Shadow API</strong>: observed endpoint not in the WAF allowed URLs or the imported or APIM OpenAPI</td>
+<td>High</td>
+<td>Logs + Config</td>
+</tr>
+<tr>
+<td><strong>Dormant/zombie API</strong>: declared but not seen in 90 days</td>
+<td>Low</td>
+<td>Logs + Config</td>
+</tr>
+<tr>
+<td>TLS certificate expiring within 30 days</td>
+<td>Medium</td>
+<td>Config</td>
+</tr>
+<tr>
+<td>Legacy config: classic Front Door, App Gateway <code>webApplicationFirewallConfiguration</code></td>
+<td>Low</td>
+<td>Config</td>
+</tr>
+</tbody>
+</table></div>
+
+<h2 id="8-dashboard-exports">8. Dashboard &amp; exports</h2>
+<p><strong>Pages</strong></p>
+<ul>
+<li><strong>Overview:</strong> number of apps, gateways, policies and endpoints; WAF coverage %; findings by severity; mode breakdown.</li>
+<li><strong>Applications:</strong> one row per FQDN. Drill-down: listeners → routes → <strong>effective WAF policy and settings</strong> → discovered endpoints → findings.</li>
+<li><strong>WAF Policies:</strong> normalized settings side by side, a raw JSON viewer, and a <strong>diff</strong> between snapshots or between two policies.</li>
+<li><strong>API Endpoints:</strong> filter by host, kind, method and last seen. Shows the template, hits, statuses and query parameters. Includes the override editor.</li>
+<li><strong>Findings:</strong> filter by severity and state, with suppression.</li>
+<li><strong>Sources / Runs:</strong> connector configuration (without secrets), run history and errors.</li>
+</ul>
+<p><strong>Exports</strong>, available from every list:</p>
+<ul>
+<li><strong>CSV</strong> and <strong>JSON</strong> for the current filter.</li>
+<li><strong>Excel (.xlsx)</strong> with one sheet per entity: Applications, Routes, Policies, PolicySettings, Endpoints, Findings.</li>
+<li>A <strong>self-contained HTML report</strong> of the full inventory, for audit or email.</li>
+<li><strong>OpenAPI 3.1</strong> per host.</li>
+</ul>
+
+<h2 id="9-roadmap">9. Roadmap</h2>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Scope</th>
+<th>Outcome</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>0</strong></td>
+<td>Repo skeleton, data model, Typer CLI, SQLite, recorded sample fixtures (Azure JSON, F5 REST JSON, bigip.conf)</td>
+<td><code>waf-inv</code> runs end-to-end on fixtures</td>
+</tr>
+<tr>
+<td><strong>1</strong></td>
+<td>Azure config connector (ARG + ARM; App Gateway + AFD; effective policy)</td>
+<td>Azure app and WAF inventory</td>
+</tr>
+<tr>
+<td><strong>2</strong></td>
+<td>F5 REST connector + offline (<code>bigip.conf</code> + ASM export) connector</td>
+<td>BIG-IP app and WAF inventory</td>
+</tr>
+<tr>
+<td><strong>3</strong></td>
+<td>Azure Log Analytics traffic → discovery engine → OpenAPI</td>
+<td>API endpoint inventory</td>
+</tr>
+<tr>
+<td><strong>4</strong></td>
+<td>Dashboard (FastAPI + HTMX) + exports (HTML/JSON/CSV/XLSX)</td>
+<td>Usable UI</td>
+</tr>
+<tr>
+<td><strong>5</strong></td>
+<td>Findings engine + snapshot diffing</td>
+<td>Posture and shadow-API report</td>
+</tr>
+<tr>
+<td><strong>6</strong></td>
+<td>F5 log ingestion (after the logging change) + Cloudflare, AWS WAF, Akamai, Imperva</td>
+<td>Wider coverage</td>
+</tr>
+</tbody>
+</table></div>
+<p>Each phase ends with fixture-based tests. Connectors are tested against recorded JSON, so CI needs no live credentials.</p>
+
+<h2 id="10-prerequisites-checklist">10. Prerequisites checklist</h2>
+<p><strong>Azure</strong></p>
+<ul>
+<li class="task"><input type="checkbox" disabled> Service principal or managed identity with <strong>Reader</strong> on the management group(s) or subscriptions.</li>
+<li class="task"><input type="checkbox" disabled> <strong>Log Analytics Reader</strong> on the workspaces.</li>
+<li class="task"><input type="checkbox" disabled> Diagnostic settings on every App Gateway and Front Door profile sending the <strong>access + WAF logs</strong> to Log Analytics. Resource-specific tables are preferred.</li>
+<li class="task"><input type="checkbox" disabled> Workspace retention ≥ 30 days (90 recommended).</li>
+<li class="task"><input type="checkbox" disabled> List of tenants and subscriptions in scope.</li>
+</ul>
+<p><strong>F5 BIG-IP</strong></p>
+<ul>
+<li class="task"><input type="checkbox" disabled> <strong>Auditor</strong> account (all partitions) on each device, or on one device per sync-failover group.</li>
+<li class="task"><input type="checkbox" disabled> HTTPS reachability from the collector host to the management IPs. Note the cert fingerprints.</li>
+<li class="task"><input type="checkbox" disabled> TMOS versions confirmed. The declarative JSON export needs 15.1 or later.</li>
+<li class="task"><input type="checkbox" disabled> Lab test: can Auditor run <code>asm/tasks/export-policy</code>?</li>
+<li class="task"><input type="checkbox" disabled> For offline mode: <code>bigip.conf</code> (or the <code>tmsh list … recursive</code> output) + ASM policy exports (JSON/XML).</li>
+<li class="task"><input type="checkbox" disabled> (Phase 6) Change request: ASM remote logging "all requests", or an LTM request-log profile to a central sink.</li>
+</ul>
+
+<h2 id="11-risks-open-questions">11. Risks &amp; open questions</h2>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Risk</th>
+<th>Mitigation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Auditor may not be allowed to POST the ASM export task</td>
+<td>Fall back to per-subcollection GETs; verify in a lab first</td>
+</tr>
+<tr>
+<td>ASM exports over 1 MB get truncated</td>
+<td>Download in Content-Range chunks, validate the JSON, record a hash</td>
+</tr>
+<tr>
+<td>restjavad overload on busy BIG-IPs</td>
+<td>Limit concurrency to 2–4, back off on 503, schedule off-peak</td>
+</tr>
+<tr>
+<td>Log volume and Log Analytics query cost/limits</td>
+<td>Aggregate in KQL by day; chunk long time ranges; never pull raw rows</td>
+</tr>
+<tr>
+<td>Path templating mistakes (over- or under-collapse)</td>
+<td>Typed masks first, conservative threshold, user overrides persisted</td>
+</tr>
+<tr>
+<td>No bodies in logs, so no schemas</td>
+<td>Accept for v1. Enrich from APIM/OpenAPI or ASM-imported OpenAPI.</td>
+</tr>
+<tr>
+<td>Cross-tenant/subscription policy references</td>
+<td>Resolve by ID; flag unreachable references</td>
+</tr>
+<tr>
+<td>Classic Front Door retirement (31 Mar 2027)</td>
+<td>Basic support only; flag as legacy</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Open questions for you:</strong></p>
+<ol>
+<li>How many Azure tenants and subscriptions, and how many BIG-IP devices and sync groups?</li>
+<li>TMOS versions in use?</li>
+<li>Where should the tool run (a VM in Azure with a managed identity, or on-prem near the F5s)? This decides auth and network paths.</li>
+<li>Can we get a sample (sanitised) <code>bigip.conf</code> + one ASM export and one App Gateway / AFD JSON export to build fixtures from?</li>
+</ol>
+
+<h2 id="12-sources">12. Sources</h2>
+<p><strong>Microsoft Learn</strong></p>
+<ul>
+<li>App Gateway WAF policy overview and per-site/per-URI policies: <a href="https://learn.microsoft.com/azure/web-application-firewall/ag/policy-overview">https://learn.microsoft.com/azure/web-application-firewall/ag/policy-overview</a> · <a href="https://learn.microsoft.com/azure/web-application-firewall/ag/per-site-policies">https://learn.microsoft.com/azure/web-application-firewall/ag/per-site-policies</a></li>
+<li>CRS/DRS rule groups: <a href="https://learn.microsoft.com/azure/web-application-firewall/ag/application-gateway-crs-rulegroups-rules">https://learn.microsoft.com/azure/web-application-firewall/ag/application-gateway-crs-rulegroups-rules</a></li>
+<li>Request size limits: <a href="https://learn.microsoft.com/azure/web-application-firewall/ag/application-gateway-waf-request-size-limits">https://learn.microsoft.com/azure/web-application-firewall/ag/application-gateway-waf-request-size-limits</a></li>
+<li>AFD DRS: <a href="https://learn.microsoft.com/azure/web-application-firewall/afds/waf-front-door-drs">https://learn.microsoft.com/azure/web-application-firewall/afds/waf-front-door-drs</a></li>
+<li>AFD WAF monitoring: <a href="https://learn.microsoft.com/azure/web-application-firewall/afds/waf-front-door-monitor">https://learn.microsoft.com/azure/web-application-firewall/afds/waf-front-door-monitor</a></li>
+<li>App Gateway monitoring reference: <a href="https://learn.microsoft.com/azure/application-gateway/monitor-application-gateway-reference">https://learn.microsoft.com/azure/application-gateway/monitor-application-gateway-reference</a></li>
+<li>Front Door monitoring reference: <a href="https://learn.microsoft.com/azure/frontdoor/monitor-front-door-reference">https://learn.microsoft.com/azure/frontdoor/monitor-front-door-reference</a></li>
+<li>Log tables <code>AGWAccessLogs</code> and <code>AGWFirewallLogs</code>: <a href="https://learn.microsoft.com/azure/azure-monitor/reference/tables/agwaccesslogs">https://learn.microsoft.com/azure/azure-monitor/reference/tables/agwaccesslogs</a> · <a href="https://learn.microsoft.com/azure/azure-monitor/reference/tables/agwfirewalllogs">https://learn.microsoft.com/azure/azure-monitor/reference/tables/agwfirewalllogs</a></li>
+<li>Resource Graph supported tables and throttling: <a href="https://learn.microsoft.com/azure/governance/resource-graph/reference/supported-tables-resources">https://learn.microsoft.com/azure/governance/resource-graph/reference/supported-tables-resources</a> · <a href="https://learn.microsoft.com/azure/governance/resource-graph/concepts/guidance-for-throttled-requests">https://learn.microsoft.com/azure/governance/resource-graph/concepts/guidance-for-throttled-requests</a></li>
+<li>Defender API security posture: <a href="https://learn.microsoft.com/azure/defender-for-cloud/api-security-posture-overview">https://learn.microsoft.com/azure/defender-for-cloud/api-security-posture-overview</a></li>
+<li>Classic Front Door retirement: <a href="https://azure.microsoft.com/updates?id=azure-front-door-classic-will-be-retired-on-31-march-2027">https://azure.microsoft.com/updates?id=azure-front-door-classic-will-be-retired-on-31-march-2027</a></li>
+</ul>
+<p><strong>F5</strong></p>
+<ul>
+<li>User roles: <a href="https://techdocs.f5.com/en-us/bigip-17-0-0/big-ip-systems-user-account-administration/user-roles.html">https://techdocs.f5.com/en-us/bigip-17-0-0/big-ip-systems-user-account-administration/user-roles.html</a></li>
+<li>Declarative WAF policy schema (v17.1): <a href="https://clouddocs.f5.com/products/waf-declarative-policy/declarative_policy_v17_1.html">https://clouddocs.f5.com/products/waf-declarative-policy/declarative_policy_v17_1.html</a></li>
+<li>Declarative policy getting started (16.1): <a href="https://techdocs.f5.com/en-us/bigip-16-1-0/big-ip-declarative-security-policy/declarative-policy-getting-started.html">https://techdocs.f5.com/en-us/bigip-16-1-0/big-ip-declarative-security-policy/declarative-policy-getting-started.html</a></li>
+<li>Attaching ASM policies via REST: <a href="https://devcentral.f5.com/s/articles/methods-to-attach-asm-policy-to-virtual-server-via-rest-api-requests-30687">https://devcentral.f5.com/s/articles/methods-to-attach-asm-policy-to-virtual-server-via-rest-api-requests-30687</a></li>
+<li>ASM export JSON size limit: <a href="https://community.f5.com/discussions/technicalforum/asm-export-json---size-limit-/340392">https://community.f5.com/discussions/technicalforum/asm-export-json---size-limit-/340392</a></li>
+<li>ASM logging (17.0): <a href="https://techdocs.f5.com/en-us/bigip-17-0-0/big-ip-asm-implementations/logging-application-security-events.html">https://techdocs.f5.com/en-us/bigip-17-0-0/big-ip-asm-implementations/logging-application-security-events.html</a></li>
+<li>AS3 API: <a href="https://clouddocs.f5.com/products/extensions/f5-appsvcs-extension/latest/refguide/apidocs.html">https://clouddocs.f5.com/products/extensions/f5-appsvcs-extension/latest/refguide/apidocs.html</a></li>
+<li>Telemetry Streaming: <a href="https://clouddocs.f5.com/products/extensions/f5-telemetry-streaming/latest/setting-up-consumer.html">https://clouddocs.f5.com/products/extensions/f5-telemetry-streaming/latest/setting-up-consumer.html</a></li>
+<li>BIG-IQ virtual servers with WAF: <a href="https://clouddocs.f5.com/products/big-iq/mgmt-api/v5.4/HowToSamples/bigiq_api_modules/asm/t_asm_virtual_servers.html">https://clouddocs.f5.com/products/big-iq/mgmt-api/v5.4/HowToSamples/bigiq_api_modules/asm/t_asm_virtual_servers.html</a></li>
+<li>F5 XC API Discovery for BIG-IP: <a href="https://docs.cloud.f5.com/docs-v2/web-app-and-api-protection/how-to/api-security/big-ip-virt-server">https://docs.cloud.f5.com/docs-v2/web-app-and-api-protection/how-to/api-security/big-ip-virt-server</a></li>
+</ul>
+<p><strong>API discovery prior art</strong></p>
+<ul>
+<li>Cloudflare API Discovery: <a href="https://developers.cloudflare.com/api-shield/security/api-discovery/">https://developers.cloudflare.com/api-shield/security/api-discovery/</a></li>
+<li>Akto (MIT, URLTemplate typed slots): <a href="https://github.com/akto-api-security/akto">https://github.com/akto-api-security/akto</a></li>
+<li>mitmproxy2swagger (MIT, two-pass templating): <a href="https://github.com/alufers/mitmproxy2swagger">https://github.com/alufers/mitmproxy2swagger</a></li>
+<li>Drain3 (log template mining): <a href="https://github.com/logpai/Drain3">https://github.com/logpai/Drain3</a></li>
+<li>openapi-pydantic (MIT): <a href="https://github.com/mike-oakley/openapi-pydantic">https://github.com/mike-oakley/openapi-pydantic</a></li>
+</ul>
+<blockquote>
+<p>A few details came from search snippets or SDK inspection rather than a fetched doc page: the exact F5 ASM subcollection names, the remote-log key list, and the Azure column casing. Verify them against <code>/mgmt/toc</code> and <code>getschema</code> in Phase 0 before hard-coding.</p>
+</blockquote>
+</main></div></body></html>
