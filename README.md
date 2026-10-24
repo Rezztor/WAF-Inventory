@@ -118,3 +118,16 @@ The tests run without network access:
 
 **Not yet covered:** Classic Front Door (retires March 2027), App Gateway for Containers, reading F5 logs directly over syslog, BIG-IQ, and cloud WAFs (Cloudflare, AWS WAF, Akamai, Imperva). See the roadmap in the plan.
 
+## Licence
+
+Copyright (C) 2026 Rezztor Technologies (Private) Limited.
+
+WAF Inventory is free software under the GNU Affero General Public License version 3 ([LICENSE](LICENSE)). If you run a
+modified version as a network service, you must offer its source to the people who use it.
+
+Rezztor Technologies also licenses WAF Inventory commercially, without the AGPL's obligations, for organisations that
+cannot meet them. Contributions are not accepted from outside (see [CONTRIBUTING.md](CONTRIBUTING.md)), so every line
+can be offered under both licences.
+
+"Rezztor" and its logo are trademarks of Rezztor Technologies (Private) Limited and are not licensed with the code:
+see [TRADEMARKS.md](TRADEMARKS.md).

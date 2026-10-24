@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=69"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,6 +7,9 @@ name = "waf-inventory"
 version = "0.2.0"
 description = "Read-only inventory of apps, WAF configuration and discovered APIs behind Azure WAF and F5 BIG-IP"
 readme = "README.md"
+license = "AGPL-3.0-only"
+license-files = ["LICENSE"]
+authors = [{ name = "Rezztor Technologies (Private) Limited" }]
 requires-python = ">=3.11"
 dependencies = [
     "sqlalchemy>=2.0,<3",

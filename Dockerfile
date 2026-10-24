@@ -3,7 +3,7 @@ FROM python:3.13-slim@sha256:d98cc29d3266e535dd9da1099688d9cb3ca4753813571e07176
 
 RUN useradd --system --uid 10001 --user-group --no-create-home --shell /usr/sbin/nologin waf \
  && install -d -o 10001 -g 10001 -m 0700 /data
-COPY pyproject.toml README.md /src/
+COPY pyproject.toml README.md LICENSE /src/
 COPY src /src/src
 RUN pip install --no-cache-dir /src && rm -rf /src
 
