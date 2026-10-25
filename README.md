@@ -20,7 +20,8 @@ python -m venv .venv && . .venv/bin/activate
 pip install -e ".[test]"
 
 waf-inv -c examples/demo.toml collect     # load the sample Contoso estate
-waf-inv -c examples/demo.toml serve       # open http://127.0.0.1:8000
+waf-inv -c examples/demo.toml reset-password admin   # the console needs an account (12+ characters)
+waf-inv -c examples/demo.toml serve       # open http://127.0.0.1:8000 and sign in
 ```
 
 The demo estate is fictitious and lives in [`examples/`](examples):
@@ -28,6 +29,33 @@ The demo estate is fictitious and lives in [`examples/`](examples):
 - 1 BIG-IP with 6 virtual servers and 6 ASM policies
 - about 200 aggregated access-log rows
 - one OpenAPI spec
+
+## Run with Docker (production)
+
+The image `ghcr.io/rezztor/waf-inventory` is published by [`release.yml`](.github/workflows/release.yml) for every `v*.*.*` tag (amd64 and arm64, with SBOM and a signed provenance attestation). On a Linux host with Docker:
+
+```bash
+mkdir waf-inventory && cd waf-inventory
+curl -fsSLO https://raw.githubusercontent.com/Rezztor/WAF-Inventory/main/deploy/compose.yaml
+curl -fsSLO https://raw.githubusercontent.com/Rezztor/WAF-Inventory/main/deploy/install.sh
+sh install.sh
+```
+
+`install.sh` creates `secrets/master_key`, asks for the admin username and password and starts the console on `https://<host>:8443`. It then prints the certificate fingerprint to compare in your browser. The password reaches the container over stdin only; just its Argon2id hash is stored. Back up `secrets/master_key` and the `waf-data` volume separately.
+
+- **Sign-in:** every page needs it, except `/login` and `/healthz`. Sessions time out after 30 minutes idle or 12 hours. After 5 failed sign-ins, attempts are delayed, up to 15 minutes at most.
+- **Forgotten password:** run `docker compose exec waf-inventory waf-inv reset-password admin` (or run `install.sh` again).
+- **Upgrade:** `docker compose pull && docker compose up -d`. To pin a version, set `WAF_INV_VERSION=1.2.3`.
+- **Verify an image:** `gh attestation verify oci://ghcr.io/rezztor/waf-inventory:<version> --owner Rezztor`
+
+**Certificate from your internal CA.** The private key is generated inside the container and never leaves it:
+
+```bash
+docker compose exec -T waf-inventory waf-inv tls csr --dns waf.corp.example --ip 10.0.0.5 > waf.csr
+# have the CA sign waf.csr, then install the server certificate followed by the intermediates:
+cat waf.crt intermediate.pem | docker compose exec -T waf-inventory waf-inv tls install
+docker compose restart
+```
 
 ## Connecting real environments
 
@@ -89,3 +117,17 @@ The tests run without network access:
 - The REST and offline F5 paths are checked to produce the same inventory.
 
 **Not yet covered:** Classic Front Door (retires March 2027), App Gateway for Containers, reading F5 logs directly over syslog, BIG-IQ, and cloud WAFs (Cloudflare, AWS WAF, Akamai, Imperva). See the roadmap in the plan.
+
+## Licence
+
+Copyright (C) 2026 Rezztor Technologies (Private) Limited.
+
+WAF Inventory is free software under the GNU Affero General Public License version 3 ([LICENSE](LICENSE)). If you run a
+modified version as a network service, you must offer its source to the people who use it.
+
+Rezztor Technologies also licenses WAF Inventory commercially, without the AGPL's obligations, for organisations that
+cannot meet them. Contributions are not accepted from outside (see [CONTRIBUTING.md](CONTRIBUTING.md)), so every line
+can be offered under both licences.
+
+"Rezztor" and its logo are trademarks of Rezztor Technologies (Private) Limited and are not licensed with the code:
+see [TRADEMARKS.md](TRADEMARKS.md).
