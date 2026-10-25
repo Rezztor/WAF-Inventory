@@ -30,13 +30,16 @@ CHUNK = 1024 * 1024  # ASM file-transfer downloads are capped at 1 MB per reques
 
 class F5Client:
     def __init__(self, host: str, username: str, password: str, ca_cert: str | None = None,
-                 http: httpx.Client | None = None):
+                 http: httpx.Client | None = None, timeout: float = 120):
         if http is None:
             verify: ssl.SSLContext | bool = True
-            if ca_cert:  # pin the device's own (usually self-signed) management certificate
-                verify = ssl.create_default_context(cafile=ca_cert)
+            if ca_cert:  # pin the device's own (usually self-signed) management certificate: a PEM file path or PEM text
+                pem = ca_cert.lstrip().startswith("-----BEGIN")
+                verify = ssl.create_default_context(cadata=ca_cert if pem else None, cafile=None if pem else ca_cert)
                 verify.check_hostname = False
-            http = httpx.Client(base_url=f"https://{host}", verify=verify, timeout=120)
+                verify.verify_flags |= ssl.VERIFY_X509_PARTIAL_CHAIN  # the pinned certificate is the trust anchor
+                verify.verify_flags &= ~ssl.VERIFY_X509_STRICT  # BIG-IP default certificates predate the strict profile
+            http = httpx.Client(base_url=f"https://{host}", verify=verify, timeout=timeout)
         self.http, self.username, self.password, self.token = http, username, password, None
 
     def login(self) -> None:
@@ -122,15 +125,18 @@ def _kebab(d: dict) -> dict:
     return {re.sub(r"(?<!^)(?=[A-Z])", "-", k).lower(): v for k, v in d.items()}
 
 
+def device_version(c: F5Client) -> str:
+    ver = next(iter(c.get("/mgmt/tm/sys/version").get("entries", {}).values()), {})
+    ver = ver.get("nestedStats", {}).get("entries", {})
+    return " ".join(ver.get(k, {}).get("description", "") for k in ("Version", "Build")).strip()
+
+
 def fetch_rest(c: F5Client, export: bool = True) -> tuple[dict, list[str]]:
     """Read the whole device. Returns (cfg, warnings)."""
     warnings: list[str] = []
     gs = c.get("/mgmt/tm/sys/global-settings")
-    ver = next(iter(c.get("/mgmt/tm/sys/version").get("entries", {}).values()), {})
-    ver = ver.get("nestedStats", {}).get("entries", {})
     cfg = {
-        "device": {"hostname": gs.get("hostname"), "version": " ".join(
-            ver.get(k, {}).get("description", "") for k in ("Version", "Build")).strip()},
+        "device": {"hostname": gs.get("hostname"), "version": device_version(c)},
         "virtuals": [], "pools": {}, "ltm_policies": {}, "irules": {}, "client_ssl": {}, "http_profiles": [], "asm": {}}
     for v in c.items("/mgmt/tm/ltm/virtual", expandSubcollections="true"):
         cfg["virtuals"].append({
@@ -244,6 +250,8 @@ def parse_conf(text: str) -> dict:
 def load_offline(path: str | Path) -> dict:
     """Directory with *.conf / *.txt (tmsh output) and ASM declarative exports (*.json), or a single .conf file."""
     path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(2, "No such file or directory", str(path))
     files = [path] if path.is_file() else sorted(path.rglob("*"))
     text = "\n".join(f.read_text(errors="replace") for f in files if f.suffix in (".conf", ".txt"))
     parsed = parse_conf(text)

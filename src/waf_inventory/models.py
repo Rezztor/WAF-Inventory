@@ -5,7 +5,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, ForeignKey, create_engine
+from sqlalchemy import JSON, ForeignKey, UniqueConstraint, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship
 
 
@@ -144,10 +144,48 @@ class LoginSession(Base):
     user: Mapped[User] = relationship()
 
 
+class SourceConfig(Base):
+    """A source managed in the console. Non-secret settings only; credentials live in `secret`."""
+    __tablename__ = "source_config"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(unique=True)
+    type: Mapped[str]
+    settings: Mapped[dict] = mapped_column(JSON, default=dict)
+    secrets: Mapped[list[Secret]] = relationship(cascade="all, delete-orphan")
+
+
+class Secret(Base):
+    __tablename__ = "secret"
+    __table_args__ = (UniqueConstraint("source_config_id", "kind"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_config_id: Mapped[int] = mapped_column(ForeignKey("source_config.id"))
+    kind: Mapped[str]  # password | client_secret | certificate
+    token: Mapped[str]  # Fernet token under the master key
+    meta: Mapped[dict] = mapped_column(JSON, default=dict)  # e.g. thumbprint, expiry, public certificate
+    updated: Mapped[datetime]
+
+
+class Job(Base):
+    __tablename__ = "job"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source: Mapped[str]
+    trigger: Mapped[str] = mapped_column(default="manual")
+    status: Mapped[str] = mapped_column(default="queued")  # queued | running | ok | error
+    created: Mapped[datetime]
+    started: Mapped[datetime | None]
+    finished: Mapped[datetime | None]
+    summary: Mapped[str | None]
+    log: Mapped[str] = mapped_column(default="")
+
+
 def connect(url: str) -> Session:
     if "://" not in url:
         url = f"sqlite:///{url}"
-    engine = create_engine(url)
+    sqlite = url.startswith("sqlite")
+    engine = create_engine(url, **({"connect_args": {"timeout": 30}} if sqlite else {}))
+    if sqlite:
+        with engine.connect() as c:
+            c.exec_driver_sql("PRAGMA journal_mode=WAL")  # the job thread writes while pages read
     Base.metadata.create_all(engine)
     return Session(engine)
 

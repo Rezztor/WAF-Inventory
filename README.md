@@ -59,6 +59,14 @@ docker compose restart
 
 ## Connecting real environments
 
+**In the console** (the way to do it in the container): Sources › Add. Every type below has a form, a Test connection button that names the missing permission or wrong setting, and Run now with a live job log.
+- **Azure:** the console makes the sign-in certificate. Download the `.cer`, upload it to the app registration, then test. A client secret also works.
+- **F5 BIG-IP:** Fetch certificate shows the device's certificate. Compare its SHA-256 fingerprint on the BIG-IP and trust it; from then on, only that certificate is accepted.
+- **Credentials** are encrypted in the database with the master key (`/run/secrets/master_key`, or the file named by `WAF_INV_MASTER_KEY_FILE`). They are never shown again; leave a field blank to keep the saved value.
+- **`config.toml`:** sources found there at first start are imported once, with F5 passwords read from their environment variables. From then on, `waf-inv collect` and the console both use the sources stored in the console, and every run appears under Jobs.
+
+**From a config file** (local use without the console):
+
 ```bash
 cp config.example.toml config.toml        # edit it
 export F5_DC1_PASSWORD=...                # secrets only via environment variables

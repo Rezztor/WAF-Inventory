@@ -9,6 +9,7 @@ import json
 import os
 import sys
 import tomllib
+from collections.abc import Callable
 from pathlib import Path
 
 from . import azure, discovery, f5, findings, report
@@ -37,13 +38,22 @@ def read_observations(pattern: Path) -> list[dict]:
     return rows
 
 
-def collect_source(session, cfg: dict, src: dict, save_raw: str | None = None) -> str:
+def _stderr(msg: str) -> None:
+    print(msg, file=sys.stderr)
+
+
+def collect_source(session, cfg: dict, src: dict, save_raw: str | None = None, credential=None, password: str | None = None,
+                   log: Callable[[str], None] = _stderr) -> str:
+    """Collect one source into the inventory. `credential` / `password` come from the console's vault; without them
+    Azure uses DefaultAzureCredential and F5 the environment variable named by password_env."""
     kind, name = src["type"], src["name"]
     observations = None
     if kind in ("azure", "azure_bundle"):
         if kind == "azure":
-            from azure.identity import DefaultAzureCredential
-            arm = azure.Arm(DefaultAzureCredential())
+            if credential is None:
+                from azure.identity import DefaultAzureCredential
+                credential = DefaultAzureCredential()
+            arm = azure.Arm(credential)
             bundle = azure.fetch_bundle(arm, src.get("subscriptions", []))
             if src.get("log_workspaces"):
                 observations = list(azure.fetch_observations(arm, src["log_workspaces"], src.get("log_days", 30)))
@@ -54,22 +64,24 @@ def collect_source(session, cfg: dict, src: dict, save_raw: str | None = None) -
             bundle = json.loads(_path(cfg, src["path"]).read_text())
         gateways, policies = azure.parse_bundle(bundle)
     elif kind == "f5_rest":
-        password = os.environ.get(src.get("password_env", "F5_PASSWORD"))
+        password = password or os.environ.get(src.get("password_env", "F5_PASSWORD"))
         if not password:
             raise RuntimeError(f"set {src.get('password_env', 'F5_PASSWORD')} for {name}")
-        client = f5.F5Client(src["host"], src["username"], password, ca_cert=src.get("ca_cert"))
+        client = f5.F5Client(src["host"], src["username"], password, ca_cert=src.get("ca_pem") or src.get("ca_cert"))
         client.login()
         try:
             data, warnings = f5.fetch_rest(client, export=src.get("export", True))
         finally:
             client.logout()
         for w in warnings:
-            print(f"  warning: {w}", file=sys.stderr)
+            log(f"warning: {w}")
         gateways, policies = f5.build(data)
     elif kind == "f5_offline":
         gateways, policies = f5.build(f5.load_offline(_path(cfg, src["path"])))
     elif kind == "logs":
         gateways, policies = None, None
+        if not glob.glob(str(_path(cfg, src["path"]))):
+            raise FileNotFoundError(2, "No files match", str(_path(cfg, src["path"])))
         observations = read_observations(_path(cfg, src["path"]))
     else:
         raise ValueError(f"unknown source type {kind!r}")
@@ -99,6 +111,16 @@ def load_specs(cfg: dict) -> list[dict]:
 
 
 def cmd_collect(args, cfg, session) -> int:
+    from .models import SourceConfig
+    if session.query(SourceConfig.id).first():  # sources managed in the console take over from config.toml
+        from . import jobs
+        runner = jobs.Runner(session.get_bind(), cfg, echo=True)
+        failed = 0
+        for sc in session.query(SourceConfig).order_by(SourceConfig.name):
+            if not args.source or sc.name in args.source:
+                job = runner.submit_now(session, sc, trigger="cli")
+                failed += job.status != "ok"
+        return 1 if failed else 0
     failed = 0
     for src in cfg.get("sources", []):
         if args.source and src["name"] not in args.source:
@@ -152,16 +174,18 @@ def cmd_export(args, cfg, session) -> int:
 def cmd_serve(args, cfg, session) -> int:
     import uvicorn
 
-    from . import auth, tls
+    from . import auth, sources, tls
     from .web import create_app
     if not auth.has_users(session):
         sys.exit("No admin account yet. Create one first: waf-inv reset-password <username>")
+    if n := sources.import_config(session, cfg):
+        print(f"Imported {n} source(s) from the config file; they are managed in the console from now on", flush=True)
     ssl = {}
     if args.tls_dir:
         cert, key = tls.ensure_cert(Path(args.tls_dir))
         ssl = {"ssl_certfile": str(cert), "ssl_keyfile": str(key)}
         print(f"HTTPS certificate SHA-256 fingerprint: {tls.fingerprint(cert)}", flush=True)
-    uvicorn.run(create_app(cfg["database"]), host=args.host, port=args.port, server_header=False, **ssl)
+    uvicorn.run(create_app(cfg["database"], cfg), host=args.host, port=args.port, server_header=False, **ssl)
     return 0
 
 
