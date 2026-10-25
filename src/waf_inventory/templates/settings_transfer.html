@@ -1,0 +1,16 @@
+{% extends "_settings.html" %}
+{% block settings %}
+<div class="layout">
+<section class="panel"><h2>Export</h2>
+<p class="muted">All sources as a config.toml file, for backup or for another site. Passwords, client secrets and private keys are not included: enter them again after importing.</p>
+<a href="/settings/export.toml">Download sources (.toml)</a>
+</section>
+<section class="panel stack"><h2>Import</h2>
+{% if result %}<p class="note" role="status">Added: {{ result.added | join(", ") or "none" }}.{% if result.skipped %} Skipped (name already used or not valid): {{ result.skipped | join(", ") }}.{% endif %}</p>{% endif %}
+<form method="post" action="/settings/import"><input type="hidden" name="csrf" value="{{ csrf }}">
+<label>Paste [[sources]] tables from a config.toml or an export<textarea name="toml" rows="12" required placeholder='[[sources]]&#10;name = "dc1-bigip01"&#10;type = "f5_rest"&#10;host = "10.0.0.10"&#10;username = "waf-inventory"'>{{ toml or '' }}</textarea></label>
+<button class="primary">Import</button></form>
+<p class="muted">Sources whose name already exists are left alone.</p>
+</section>
+</div>
+{% endblock %}

@@ -1,0 +1,2 @@
+{% if problems %}<div class="alert" role="alert"><b>{{ problems | length }} thing{{ "s need" if problems | length > 1 else " needs" }} attention</b>
+<ul>{% for text, link in problems %}<li>{{ text }} <a href="{{ link }}">Fix it</a></li>{% endfor %}</ul></div>{% endif %}

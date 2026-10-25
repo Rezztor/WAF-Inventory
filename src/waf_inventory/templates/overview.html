@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% from "_macros.html" import grid %}
 {% block body %}
 <h1>Overview</h1>
+{% include "_problems.html" %}
 <div class="cards">
   <a class="card" href="/t/applications" style="text-decoration:none;color:inherit"><div class="n">{{ summary.applications }}</div><div class="l">applications</div></a>
   <div class="card"><div class="n">{{ summary.coverage }}%</div><div class="l">web listeners in blocking mode</div></div>
