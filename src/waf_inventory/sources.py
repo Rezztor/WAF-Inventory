@@ -64,6 +64,21 @@ EVERY = (("off", "Manual (Run now)"), ("hourly", "Every hour"), ("daily", "Every
 DAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 WARN_DAYS = 30
 PATH_TYPES = {"f5_offline", "azure_bundle", "logs"}
+SECRETS = {f.key for _, fields in TYPES.values() for f in fields if f.kind == "secret"}
+KINDS = {"text": str, "choice": str, "date": str, "list": list, "int": int, "bool": bool}
+
+
+def day(v) -> date | None:
+    """A YYYY-MM-DD string as a date; None for anything else."""
+    try:
+        return date.fromisoformat(v) if isinstance(v, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", v) else None
+    except ValueError:
+        return None
+
+
+def valid_schedule(sched) -> bool:
+    return (isinstance(sched, dict) and sched.get("every") in dict(EVERY) and sched.get("day") in range(7)
+            and isinstance(sched.get("at"), str) and re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", sched["at"]) is not None)
 
 
 def secret_state(sc: SourceConfig | None) -> dict[str, dict]:
@@ -92,21 +107,20 @@ def apply_form(sc: SourceConfig, form: dict[str, str]) -> list[str]:
             errors.append(f"Choose {f.label.lower()}")
         elif f.kind == "date":
             settings[f.key] = v
-            if v and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
+            if v and not day(v):
                 errors.append(f"{f.label} must be a date")
         else:
             settings[f.key] = v
         if f.required and not v and f.kind != "bool":
             errors.append(f"{f.label} is required")
-    every, at, day = form.get("schedule_every", "off"), form.get("schedule_at", "02:00"), form.get("schedule_day", "0")
-    if every not in dict(EVERY) or not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", at) or day not in map(str, range(7)):
+    d = form.get("schedule_day", "0")
+    schedule = {"every": form.get("schedule_every", "off"), "at": form.get("schedule_at", "02:00"), "day": int(d) if d.isdigit() else d}
+    if not valid_schedule(schedule):
         errors.append("Choose a valid schedule")
-    else:
-        schedule = {"every": every, "at": at, "day": int(day)}
-        if schedule != settings.get("schedule"):
-            settings["schedule"] = schedule
-            nxt = next_run(schedule, datetime.now(timezone.utc).replace(tzinfo=None))
-            settings["next_run"] = nxt.isoformat() if nxt else None
+    elif schedule != settings.get("schedule"):
+        settings["schedule"] = schedule
+        nxt = next_run(schedule, datetime.now(timezone.utc).replace(tzinfo=None))
+        settings["next_run"] = nxt.isoformat() if nxt else None
     sc.settings = settings
     if sc.type == "azure" and settings.get("auth") == "secret" and not secret_state(sc).get("client_secret"):
         errors.append("Client secret is required for client secret sign-in")
@@ -294,9 +308,9 @@ def problems(s: Session, tls_cert: Path | None = None) -> list[tuple[str, str]]:
     out, soon = [], date.today() + timedelta(days=WARN_DAYS)
     inv = {x.name: x for x in s.query(Source)}
 
-    def expiring(what: str, day: str | None, link: str) -> None:
-        if day and date.fromisoformat(day) <= soon:
-            out.append((f"{what} {'expired' if date.fromisoformat(day) < date.today() else 'expires'} on {day}", link))
+    def expiring(what: str, when: str | None, link: str) -> None:
+        if (d := day(when)) and d <= soon:
+            out.append((f"{what} {'expired' if d < date.today() else 'expires'} on {when}", link))
 
     for sc in s.query(SourceConfig).order_by(SourceConfig.name):
         link, st = f"/sources/{sc.id}", sc.settings
@@ -319,16 +333,37 @@ def problems(s: Session, tls_cert: Path | None = None) -> list[tuple[str, str]]:
 SKIP = ("name", "type", "password_env", "ca_cert", "next_run")
 
 
+def _settings(src: dict) -> dict:
+    """An entry's settings, without its secrets, each known field checked against its kind. Raises ValueError."""
+    st = {k: v for k, v in src.items() if k not in SKIP and k not in SECRETS}
+    for f in TYPES[src["type"]][1]:
+        if f.kind == "date" and isinstance(st.get(f.key), date):
+            st[f.key] = st[f.key].isoformat()  # an unquoted TOML date
+        if f.key in st and not (isinstance(v := st[f.key], KINDS[f.kind]) and (f.kind != "int" or not isinstance(v, bool))
+                                and (f.kind != "list" or all(isinstance(x, str) for x in v))
+                                and (f.kind != "choice" or v in dict(f.choices)) and (f.kind != "date" or not v or day(v))):
+            raise ValueError(f"{src['name']}: {f.key} is not a valid {f.kind}")
+    for k in ("ca_cert", "ca_pem"):
+        if k in src and not isinstance(src[k], str):
+            raise ValueError(f"{src['name']}: {k} is not text")
+    if isinstance(st.get("schedule"), dict):
+        st["schedule"] = {"every": "off", "at": "02:00", "day": 0, **st["schedule"]}
+    if "schedule" in st and not valid_schedule(st["schedule"]):
+        raise ValueError(f"{src['name']}: schedule needs every = off, hourly, daily or weekly, at = \"HH:MM\" and day = 0 to 6")
+    return st
+
+
 def add_sources(s: Session, entries: list[dict], base: Path) -> tuple[list[str], list[str]]:
     """Add [[sources]] entries (config.toml shape) not present yet. Returns (added, skipped) names.
-    F5 passwords are read from the environment variable named by password_env; nothing else is secret here."""
+    Secrets written inline go to the vault; an F5 password may also come from the environment variable named by password_env."""
     have = {n for (n,) in s.query(SourceConfig.name)}
     added, skipped = [], []
     for src in entries:
-        if not isinstance(src, dict) or src.get("type") not in TYPES or not src.get("name") or src["name"] in have:
+        if not isinstance(src, dict) or src.get("type") not in TYPES or not isinstance(src.get("name"), str) \
+                or not src["name"] or src["name"] in have:
             skipped.append(str(src.get("name", "?")) if isinstance(src, dict) else "?")
             continue
-        st = {k: v for k, v in src.items() if k not in SKIP}
+        st = _settings(src)
         if src["type"] in PATH_TYPES and "path" in src:
             st["path"] = str(resolve({"_dir": base}, src["path"]))
         if src["type"] == "azure":
@@ -343,8 +378,11 @@ def add_sources(s: Session, entries: list[dict], base: Path) -> tuple[list[str],
             nxt = next_run(st["schedule"], datetime.now(timezone.utc).replace(tzinfo=None))
             st["next_run"] = nxt.isoformat() if nxt else None
         sc = SourceConfig(name=src["name"], type=src["type"], settings=st)
-        if src["type"] == "f5_rest" and (pw := os.environ.get(src.get("password_env", "F5_PASSWORD"))):
+        if src["type"] == "f5_rest" and (pw := os.environ.get(str(src.get("password_env", "F5_PASSWORD")))):
             vault.put(sc, "password", pw)
+        for k in SECRETS & src.keys():
+            if src[k]:
+                vault.put(sc, k, str(src[k]))
         s.add(sc)
         have.add(sc.name)
         added.append(sc.name)
@@ -377,6 +415,6 @@ def export_toml(s: Session) -> str:
     for sc in s.query(SourceConfig).order_by(SourceConfig.name):
         out += ["[[sources]]", f"name = {_toml(sc.name)}", f"type = {_toml(sc.type)}"]
         out += [f"{k} = {_toml(v)}" for k, v in sc.settings.items()
-                if k not in SKIP and v is not None and (k == "ca_pem" or not k.startswith("ca_"))]
+                if k not in SKIP and k not in SECRETS and v is not None and (k == "ca_pem" or not k.startswith("ca_"))]
         out += [f"# {k}: not exported, enter it again in the console" for k in secret_state(sc)] + [""]
     return "\n".join(out)

@@ -63,7 +63,11 @@ class Runner:
 
     def _loop(self) -> None:
         while True:
-            self.run(self.q.get())
+            job_id = self.q.get()
+            try:
+                self.run(job_id)
+            except Exception as e:  # the worker must outlive any one job; a restart marks that job interrupted
+                print(f"jobs: job {job_id}: {type(e).__name__}: {e}", file=sys.stderr)
 
     def run(self, job_id: int) -> Job:
         with Session(self.engine, expire_on_commit=False) as js, Session(self.engine) as s:
@@ -91,6 +95,7 @@ class Runner:
                 job.status = "ok"
             except Exception as e:  # one failed source must not stop the worker
                 s.rollback()
+                sc = s.query(SourceConfig).filter_by(name=job.source).one_or_none()  # it may have been deleted meanwhile
                 job.status, job.summary = "error", sources.explain(e, sc)
                 log(f"Failed: {job.summary}")
                 if sc is not None:

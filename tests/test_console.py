@@ -1,4 +1,5 @@
 """Schedules, warnings, certificate rotation, pickers, audit log, settings, import/export, HTTPS certificate."""
+import time
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
@@ -8,7 +9,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi.testclient import TestClient
 
-from waf_inventory import auth, jobs, sources, tls
+from waf_inventory import auth, jobs, report, sources, tls, vault
 from waf_inventory.models import AuditLog, Job, SourceConfig, connect, get_setting
 from waf_inventory.web import create_app
 
@@ -153,6 +154,89 @@ def test_toml_export_and_import(console, tmp_path, monkeypatch):
         assert bigip.settings["schedule"] == {"every": "weekly", "at": "03:30", "day": 6} and bigip.settings["next_run"]
         assert s.query(SourceConfig).filter_by(name="az").one().settings["subscriptions"] == ["s1", "s2"]
 
+
+
+def test_imported_secrets_go_to_the_vault_and_never_back_out(console):
+    c = console
+    toml = ('[[sources]]\nname = "bigip"\ntype = "f5_rest"\nhost = "192.0.2.1"\nusername = "auditor"\npassword = "Inline-Secret-1"\n'
+            '[[sources]]\nname = "az"\ntype = "azure"\ntenant_id = "t"\nclient_id = "c"\nauth = "secret"\n'
+            'client_secret = "Inline-Secret-2"\nclient_secret_expires = 2030-01-31\n')
+    assert "Added: bigip, az" in c.post("/settings/import", data={"csrf": csrf(c, "/settings/transfer"), "toml": toml}).text
+    exported = c.get("/settings/export.toml").text
+    assert "Inline-Secret" not in exported and "# client_secret: not exported" in exported
+    with connect(c.db) as s:
+        bigip, az = (s.query(SourceConfig).filter_by(name=n).one() for n in ("bigip", "az"))
+        assert "password" not in bigip.settings and vault.get(bigip, "password") == "Inline-Secret-1"
+        assert "client_secret" not in az.settings and vault.get(az, "client_secret") == "Inline-Secret-2"
+        assert az.settings["client_secret_expires"] == "2030-01-31"
+    assert all(b"Inline-Secret" not in f.read_bytes() for f in c.dir.glob("console.db*"))
+
+
+@pytest.mark.parametrize("entry, why", [
+    ('type = "logs"\npath = 5', "path is not a valid text"),
+    ('type = "logs"\npath = "x"\nschedule = "daily"', "schedule needs"),
+    ('type = "logs"\npath = "x"\nschedule = { every = "daily", at = 2 }', "schedule needs"),
+    ('type = "azure"\nclient_secret_expires = "2026-13-45"', "client_secret_expires is not a valid date"),
+    ('type = "azure"\nlog_days = "30"', "log_days is not a valid int"),
+    ('type = "azure"\nsubscriptions = [1]', "subscriptions is not a valid list"),
+    ('type = "f5_rest"\nca_cert = 1', "ca_cert is not text"),
+])
+def test_import_refuses_wrong_values_in_plain_words(console, entry, why):
+    c = console
+    r = c.post("/settings/import", data={"csrf": csrf(c, "/settings/transfer"), "toml": f'[[sources]]\nname = "x"\n{entry}\n'})
+    assert r.status_code == 422 and f"Not imported: x: {why}" in r.text
+    with connect(c.db) as s:
+        assert not s.query(SourceConfig).count()
+
+
+def test_a_bad_date_is_refused_and_never_breaks_the_pages(console):
+    c = console
+    r = c.post("/sources/new/azure", data={"csrf": csrf(c), "name": "az", "tenant_id": "t", "client_id": "c", "auth": "secret",
+                                          "client_secret": "x" * 20, "client_secret_expires": "2026-13-45", "log_days": "30"})
+    assert r.status_code == 422 and "Client secret expires on must be a date" in r.text
+    sid = add(c, "azure", name="az", tenant_id="t", client_id="c", auth="secret", client_secret="x" * 20, log_days="30")
+    with connect(c.db) as s:  # a value stored before dates were checked
+        sc = s.get(SourceConfig, sid)
+        sc.settings = {**sc.settings, "client_secret_expires": "2026-13-45"}
+        s.commit()
+    assert c.get("/").status_code == 200 and c.get("/sources").status_code == 200
+
+
+def test_a_source_is_not_deleted_under_a_running_job(console, monkeypatch):
+    c = console
+    sid = add(c, "logs", name="logs", path="logs/*.jsonl")
+    with connect(c.db) as s:
+        s.add(Job(source="logs", created=datetime.now(), status="running"))
+        s.commit()
+    r = c.post(f"/sources/{sid}/delete", data={"csrf": csrf(c), "password": PASSWORD})
+    assert r.status_code == 409 and "queued or running" in r.text
+    with connect(c.db) as s:
+        s.query(Job).update({"status": "ok"})
+        s.commit()
+        assert c.post(f"/sources/{sid}/delete", data={"csrf": csrf(c), "password": PASSWORD}).status_code == 200
+
+    # deleted anyway while collecting (a race): the job fails cleanly, nothing comes back and the worker keeps going
+    sid = add(c, "logs", name="logs", path="logs/*.jsonl")
+
+    def vanish(s, cfg, sc, log):
+        with connect(c.db) as other:
+            other.delete(other.get(SourceConfig, sc.id))
+            other.commit()
+        raise RuntimeError("connection lost")
+    monkeypatch.setattr(sources, "collect", vanish)
+    with connect(c.db) as s:
+        runner = jobs.Runner(s.get_bind(), {"_dir": c.dir})
+        job = runner.submit(s, s.get(SourceConfig, sid))
+        for _ in range(200):
+            if s.get(Job, job.id, populate_existing=True).status not in jobs.ACTIVE:
+                break
+            time.sleep(0.05)
+        assert s.get(Job, job.id).summary == "RuntimeError: connection lost"
+        assert report.table(s, "sources") == [] and runner.thread.is_alive()
+    monkeypatch.setattr(jobs.Runner, "run", lambda self, job_id: 1 / 0)
+    runner.q.put(0)
+    time.sleep(0.2)
+    assert runner.thread.is_alive()
 
 def test_https_certificate_from_internal_ca_in_the_browser(console, tmp_path):
     c = console

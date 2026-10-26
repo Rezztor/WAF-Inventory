@@ -283,6 +283,9 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
             sc = get_source(s, sid)
             if not auth.authenticate(s, request.state.user, f.get("password", "")):
                 return source_page(request, s, sc, 403, delete_error="Wrong password. The source was not deleted.")
+            if s.query(Job).filter(Job.source == sc.name, Job.status.in_(jobs.ACTIVE)).first():
+                return source_page(request, s, sc, 409, delete_error="A collection of this source is queued or running. "
+                                   "Delete it once that job has finished.")
             inv = s.query(Source).filter_by(name=sc.name).one_or_none()
             for x in (sc, inv):
                 if x is not None:
@@ -499,7 +502,7 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
             try:
                 entries = tomllib.loads(f.get("toml", "")).get("sources", [])
                 added, skipped = sources.add_sources(s, entries, cfg["_dir"])
-            except (tomllib.TOMLDecodeError, ValueError, vault.VaultError) as e:
+            except (tomllib.TOMLDecodeError, ValueError, TypeError, vault.VaultError) as e:
                 s.rollback()
                 return settings_page(request, s, "transfer", 422, errors=[f"Not imported: {e}"], toml=f.get("toml", ""))
             audit(s, request, "sources imported", ", ".join(added), skipped=skipped)
