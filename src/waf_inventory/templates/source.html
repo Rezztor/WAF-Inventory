@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}{{ sc.name or "New source" }} · WAF Inventory{% endblock %}
+{% macro post(action, label, cls="") %}<form method="post" action="{{ action }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="{{ cls }}">{{ label }}</button></form>{% endmacro %}
+{% block body %}
+<p class="crumb"><a href="/sources">Sources</a> / {{ title }}</p>
+<h1>{{ "Add: " ~ title if new else sc.name }}</h1>
+{% if msg %}<p class="note" role="status">{{ msg }}</p>{% endif %}
+{% if errors %}<div class="alert" role="alert"><b>Not saved.</b><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+{% if test %}<div class="{{ 'note' if test.ok else 'alert' }}" role="status"><b>{{ "Connection works." if test.ok else "Connection failed." }}</b>
+<ul>{% for l in test.lines %}<li>{{ l }}</li>{% endfor %}</ul></div>{% endif %}
+
+<div class="layout">
+<form class="panel stack" method="post" action="{{ '/sources/new/' ~ sc.type if new else '/sources/' ~ sc.id }}">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+<label>Name<input name="name" value="{{ sc.name }}" required {{ "autofocus" if new else "readonly" }}>
+{% if not new %}<small>The name identifies this source's data and cannot be changed.</small>{% endif %}</label>
+{% for f in fields %}{% set v = sc.settings.get(f.key) %}
+{% if f.kind == "bool" %}<label class="check"><input type="checkbox" name="{{ f.key }}" {{ "checked" if v }}> {{ f.label }}</label>
+{% elif f.kind == "choice" %}<fieldset><legend>{{ f.label }}</legend>
+{% for val, lab in f.choices %}<label class="check"><input type="radio" name="{{ f.key }}" value="{{ val }}" {{ "checked" if v == val }}> {{ lab }}</label>{% endfor %}</fieldset>
+{% elif f.kind == "secret" %}<label>{{ f.label }}{% if secrets.get(f.key) %} <span><span class="b ok">Set</span> updated {{ secrets[f.key].updated.strftime("%d %b %Y") }}</span>{% endif %}
+<input type="password" name="{{ f.key }}" autocomplete="new-password" placeholder="{{ 'Leave blank to keep the saved value' if secrets.get(f.key) else '' }}">
+{% if f.help %}<small>{{ f.help }}</small>{% endif %}</label>
+{% elif f.kind == "list" %}<label>{{ f.label }}<textarea name="{{ f.key }}" rows="3">{{ v | join("\n") if v is iterable and v is not string else (v or "") }}</textarea>
+{% if f.help %}<small>{{ f.help }}</small>{% endif %}</label>
+{% else %}<label>{{ f.label }}<input name="{{ f.key }}" value="{{ v if v is not none else '' }}" {{ 'inputmode=numeric' if f.kind == 'int' }} {{ 'required' if f.required }}>
+{% if f.help %}<small>{{ f.help }}</small>{% endif %}</label>
+{% endif %}{% endfor %}
+<div class="actions"><button class="primary">{{ "Add source" if new else "Save" }}</button>{% if new %}<a href="/sources">Cancel</a>{% endif %}</div>
+</form>
+
+<div>
+{% if not new %}
+<section class="panel"><h2>Check and collect</h2>
+<p class="muted">Test signs in and reads a little, without changing the inventory. Run now collects everything.</p>
+<div class="actions">{{ post("/sources/" ~ sc.id ~ "/test", "Test connection") }}{{ post("/sources/" ~ sc.id ~ "/run", "Run now", "primary") }}</div>
+</section>
+
+{% if sc.type == "azure" and sc.settings.auth == "certificate" %}{% set c = secrets.get("certificate") %}
+<section class="panel"><h2>Sign-in certificate</h2>
+{% if c %}<dl class="kv"><dt>Thumbprint</dt><dd><code>{{ c.meta.thumbprint }}</code></dd><dt>Expires</dt><dd>{{ c.meta.expires }}</dd></dl>
+<ol class="muted"><li><a href="/sources/{{ sc.id }}/azure/certificate.cer">Download the .cer</a> (public part only; the private key stays here, encrypted).</li>
+<li>In the Microsoft Entra admin center: App registrations › your app › Certificates &amp; secrets › Certificates › Upload certificate.</li>
+<li>Check the thumbprint Azure shows matches, then Test connection.</li></ol>
+<div class="actions">{{ post("/sources/" ~ sc.id ~ "/azure/certificate", "Make a new certificate") }}
+<small class="muted">Replaces this one: upload the new .cer before the next run.</small></div>
+{% else %}<p>No certificate yet.</p>{{ post("/sources/" ~ sc.id ~ "/azure/certificate", "Make a certificate", "primary") }}{% endif %}
+</section>
+{% endif %}
+
+{% if sc.type == "f5_rest" %}
+<section class="panel"><h2>Device certificate</h2>
+{% if sc.settings.ca_fingerprint %}<p>Trusted, and only this one:</p>
+<dl class="kv"><dt>Subject</dt><dd>{{ sc.settings.ca_subject }}</dd><dt>Expires</dt><dd>{{ sc.settings.ca_expires }}</dd>
+<dt>SHA-256</dt><dd><code>{{ sc.settings.ca_fingerprint }}</code></dd></dl>
+{% else %}<p class="muted">Not pinned: the BIG-IP must present a certificate from a publicly trusted CA. Most use a self-signed one, so fetch and trust it.</p>{% endif %}
+{% if fetched %}
+<h2>Certificate the device presents now</h2>
+<dl class="kv"><dt>Subject</dt><dd>{{ fetched.subject }}</dd><dt>Expires</dt><dd>{{ fetched.expires }}</dd>
+<dt>SHA-256</dt><dd><code>{{ fetched.fingerprint }}</code></dd></dl>
+<p class="muted">Compare it on the BIG-IP before trusting it, e.g. in its shell:<br>
+<code>openssl x509 -in /config/httpd/conf/ssl.crt/server.crt -noout -fingerprint -sha256</code></p>
+<form method="post" action="/sources/{{ sc.id }}/f5/trust-cert"><input type="hidden" name="csrf" value="{{ csrf }}">
+<input type="hidden" name="pem" value="{{ fetched.pem }}"><input type="hidden" name="fingerprint" value="{{ fetched.fingerprint }}">
+<button class="primary">The fingerprints match: trust this certificate</button></form>
+{% else %}<div class="actions">{{ post("/sources/" ~ sc.id ~ "/f5/fetch-cert", "Fetch certificate") }}</div>{% endif %}
+</section>
+{% endif %}
+
+{% if recent %}<section class="panel"><h2>Recent jobs</h2><ul>
+{% for j in recent %}<li><a href="/jobs/{{ j.id }}">{{ (j.started or j.created).strftime("%d %b %H:%M") }}</a>
+<span class="b {{ 'detect' if j.status in ('queued', 'running') else j.status }}">{{ j.status }}</span> {{ j.summary or "" }}</li>{% endfor %}</ul></section>{% endif %}
+
+<section class="panel stack"><h2>Delete source</h2>
+<p class="muted">Removes the source, its stored credentials and its inventory data. Job history stays.</p>
+{% if delete_error %}<p class="alert" role="alert">{{ delete_error }}</p>{% endif %}
+<form method="post" action="/sources/{{ sc.id }}/delete"><input type="hidden" name="csrf" value="{{ csrf }}">
+<label>Your password, to confirm<input type="password" name="password" autocomplete="current-password" required></label>
+<button class="danger">Delete {{ sc.name }}</button></form>
+</section>
+{% else %}
+<section class="panel"><h2>What happens next</h2>
+<p class="muted">After you add the source, test the connection{% if sc.type == "azure" %}. With certificate sign-in, a certificate is made for you to upload to the app registration{% elif sc.type == "f5_rest" %} and trust the device's certificate{% endif %}. Credentials are encrypted as soon as they are saved and are never shown again.</p>
+</section>
+{% endif %}
+</div>
+</div>
+{% endblock %}

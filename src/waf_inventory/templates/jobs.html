@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Jobs · WAF Inventory{% endblock %}
+{% block body %}
+<h1>Jobs <span class="muted">({{ jobs | length }})</span></h1>
+{% if jobs %}<div class="tw"><table>
+<thead><tr><th>#</th><th>Source</th><th>Status</th><th>Trigger</th><th>Started</th><th>Took</th><th>Result</th></tr></thead>
+<tbody>{% for j in jobs %}<tr>
+<td><a href="/jobs/{{ j.id }}">{{ j.id }}</a></td><td>{{ j.source }}</td>
+<td><span class="b {{ 'detect' if j.status in ('queued', 'running') else j.status }}">{{ j.status }}</span></td>
+<td>{{ j.trigger }}</td><td>{{ (j.started or j.created).strftime('%d %b %Y %H:%M') }}</td>
+<td>{{ ((j.finished - j.started).total_seconds() | round(1)) ~ ' s' if j.finished and j.started else '' }}</td>
+<td>{{ j.summary or '' }}</td></tr>{% endfor %}</tbody></table></div>
+{% else %}<p class="muted">No jobs yet. Use Run now on a source.</p>{% endif %}
+{% endblock %}

@@ -1,16 +1,21 @@
 """Dashboard: server-rendered pages over the inventory, with CSV / JSON / Excel / HTML / OpenAPI exports."""
 from __future__ import annotations
 
+import hmac
 import json
 import re
+from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
-from . import auth, report
-from .models import Endpoint, Listener, WafPolicy, connect
+from . import auth, findings, jobs, report, sources, vault
+from .models import Endpoint, Job, Listener, Source, SourceConfig, WafPolicy, connect
 
 PAGES = {  # table -> (title, filter columns)
     "applications": ("Applications", ["application", "gateway", "vendor", "mode"]),
@@ -28,14 +33,24 @@ HEADERS = {
     "X-Frame-Options": "DENY", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "same-origin",
     "Cache-Control": "no-store",
 }
+MESSAGES = {
+    "created": "Source saved. Next: Test connection.",
+    "saved": "Saved.",
+    "deleted": "Source deleted, together with its inventory data.",
+    "trusted": "Certificate trusted. Test connection to confirm it works.",
+    "certificate": "New certificate made. Download the .cer and upload it to the app registration, then Test connection.",
+}
 MEDIA = {"csv": "text/csv", "json": "application/json",
          "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
 
 
-def create_app(db: str) -> FastAPI:
+def create_app(db: str, cfg: dict | None = None) -> FastAPI:
     app = FastAPI(title="WAF Inventory", docs_url=None, redoc_url=None)
     engine = connect(db).get_bind()
     env = report.env
+    cfg = cfg or {"_dir": Path.cwd()}
+    jobs.interrupted(engine)
+    runner = jobs.Runner(engine, cfg)
 
     def session() -> Session:
         return Session(engine)
@@ -65,6 +80,13 @@ def create_app(db: str) -> FastAPI:
 
     async def form(request: Request) -> dict[str, str]:
         return {k: v[0] for k, v in parse_qs((await request.body()).decode(), keep_blank_values=True).items()}
+
+    async def checked_form(request: Request) -> dict[str, str]:
+        """Form fields of a signed-in POST, after checking its CSRF token."""
+        f = await form(request)
+        if not request.state.csrf or not hmac.compare_digest(f.get("csrf", ""), request.state.csrf):
+            raise HTTPException(403, "Invalid form token; reload the page and try again")
+        return f
 
     def safe_next(target: str | None) -> str:
         return target if target and target.startswith("/") and not target.startswith("//") and "\\" not in target else "/"
@@ -100,13 +122,190 @@ def create_app(db: str) -> FastAPI:
 
     @app.post("/logout")
     async def logout(request: Request):
-        if (await form(request)).get("csrf") != request.state.csrf:
-            raise HTTPException(403, "Invalid form token; reload the page and try again")
+        await checked_form(request)
         with session() as s:
             auth.end_session(s, request.cookies.get(auth.COOKIE))
         r = RedirectResponse("/login", 303)
         r.delete_cookie(auth.COOKIE)
         return r
+
+    # ------------------------------------------------------------ sources and jobs
+
+    def source_page(request: Request, s: Session, sc: SourceConfig, status_code: int = 200, **ctx) -> HTMLResponse:
+        recent = [] if sc.id is None else s.query(Job).filter_by(source=sc.name).order_by(Job.id.desc()).limit(5).all()
+        return page(request, "source.html", status_code, active="console_sources", sc=sc, new=sc.id is None,
+                    title=sources.TYPES[sc.type][0], fields=sources.TYPES[sc.type][1], secrets=sources.secret_state(sc),
+                    recent=recent, **ctx)
+
+    def get_source(s: Session, sid: int) -> SourceConfig:
+        sc = s.get(SourceConfig, sid)
+        if sc is None:
+            raise HTTPException(404)
+        return sc
+
+    @app.get("/sources", response_class=HTMLResponse)
+    def sources_list(request: Request, msg: str = ""):
+        with session() as s:
+            inv = {x.name: x for x in s.query(Source)}
+            active = {j.source: j for j in s.query(Job).filter(Job.status.in_(jobs.ACTIVE))}
+            rows = [{"sc": sc, "title": sources.TYPES[sc.type][0], "inv": inv.get(sc.name), "job": active.get(sc.name),
+                     "secrets": sources.secret_state(sc)} for sc in s.query(SourceConfig).order_by(SourceConfig.name)]
+            return page(request, "sources.html", active="console_sources", rows=rows, types=sources.TYPES, msg=MESSAGES.get(msg))
+
+    @app.get("/sources/new/{kind}", response_class=HTMLResponse)
+    def source_new(kind: str, request: Request):
+        if kind not in sources.TYPES:
+            raise HTTPException(404)
+        with session() as s:
+            return source_page(request, s, SourceConfig(type=kind, name="", settings=dict(sources.DEFAULTS.get(kind, {}))))
+
+    @app.post("/sources/new/{kind}")
+    async def source_create(kind: str, request: Request):
+        if kind not in sources.TYPES:
+            raise HTTPException(404)
+        f = await checked_form(request)
+        with session() as s:
+            sc = SourceConfig(type=kind, name=f.get("name", "").strip(), settings=dict(sources.DEFAULTS.get(kind, {})))
+            try:
+                errors = ([] if sc.name else ["Name is required"]) + sources.apply_form(sc, f)
+                if sc.name and s.query(SourceConfig).filter_by(name=sc.name).first():
+                    errors.append("A source with that name already exists")
+                if not errors and kind == "azure" and sc.settings.get("auth") == "certificate":
+                    sources.make_azure_certificate(sc)
+            except vault.VaultError as e:
+                errors = [str(e)]
+            if errors:
+                return source_page(request, s, sc, 422, errors=errors)
+            s.add(sc)
+            s.commit()
+            return RedirectResponse(f"/sources/{sc.id}?msg=created", 303)
+
+    @app.get("/sources/{sid}", response_class=HTMLResponse)
+    def source_edit(sid: int, request: Request, msg: str = ""):
+        with session() as s:
+            return source_page(request, s, get_source(s, sid), msg=MESSAGES.get(msg))
+
+    @app.post("/sources/{sid}")
+    async def source_save(sid: int, request: Request):
+        f = await checked_form(request)
+        with session() as s:
+            sc = get_source(s, sid)
+            try:
+                errors = sources.apply_form(sc, f)
+                if not errors and sc.type == "azure" and sc.settings.get("auth") == "certificate" and "certificate" not in sources.secret_state(sc):
+                    sources.make_azure_certificate(sc)
+            except vault.VaultError as e:
+                errors = [str(e)]
+            if errors:
+                r = source_page(request, s, sc, 422, errors=errors)  # rendered with what was typed, then discarded
+                s.rollback()
+                return r
+            s.commit()
+            return RedirectResponse(f"/sources/{sid}?msg=saved", 303)
+
+    def _test(sid: int) -> tuple[bool, list[str]]:  # in a worker thread: it waits on the network
+        with session() as s:
+            sc = get_source(s, sid)
+            try:
+                return True, sources.test(cfg, sc)
+            except Exception as e:
+                return False, [sources.explain(e, sc)]
+
+    @app.post("/sources/{sid}/test", response_class=HTMLResponse)
+    async def source_test(sid: int, request: Request):
+        await checked_form(request)
+        ok, lines = await run_in_threadpool(_test, sid)
+        with session() as s:
+            return source_page(request, s, get_source(s, sid), test={"ok": ok, "lines": lines})
+
+    @app.post("/sources/{sid}/run")
+    async def source_run(sid: int, request: Request):
+        await checked_form(request)
+        with session() as s:
+            job = runner.submit(s, get_source(s, sid))
+            return RedirectResponse(f"/jobs/{job.id}", 303)
+
+    @app.post("/sources/{sid}/delete", response_class=HTMLResponse)
+    async def source_delete(sid: int, request: Request):
+        f = await checked_form(request)
+        with session() as s:
+            sc = get_source(s, sid)
+            if not auth.authenticate(s, request.state.user, f.get("password", "")):
+                return source_page(request, s, sc, 403, delete_error="Wrong password. The source was not deleted.")
+            inv = s.query(Source).filter_by(name=sc.name).one_or_none()
+            for x in (sc, inv):
+                if x is not None:
+                    s.delete(x)
+            s.commit()
+            from .cli import load_specs
+            findings.run(s, load_specs(cfg))
+            return RedirectResponse("/sources?msg=deleted", 303)
+
+    @app.post("/sources/{sid}/azure/certificate")
+    async def azure_certificate(sid: int, request: Request):
+        await checked_form(request)
+        with session() as s:
+            sc = get_source(s, sid)
+            if sc.type != "azure":
+                raise HTTPException(404)
+            sources.make_azure_certificate(sc)
+            s.commit()
+            return RedirectResponse(f"/sources/{sid}?msg=certificate", 303)
+
+    @app.get("/sources/{sid}/azure/certificate.cer")
+    def azure_certificate_download(sid: int):
+        with session() as s:
+            meta = sources.secret_state(get_source(s, sid)).get("certificate", {}).get("meta")
+            if not meta:
+                raise HTTPException(404)
+            der = x509.load_pem_x509_certificate(meta["cert_pem"].encode()).public_bytes(serialization.Encoding.DER)
+            return Response(der, media_type="application/pkix-cert",
+                            headers={"Content-Disposition": f'attachment; filename="waf-inventory-{sid}.cer"'})
+
+    @app.post("/sources/{sid}/f5/fetch-cert", response_class=HTMLResponse)
+    async def f5_fetch_cert(sid: int, request: Request):
+        await checked_form(request)
+        with session() as s:
+            host = get_source(s, sid).settings.get("host", "")
+        try:
+            fetched, error = await run_in_threadpool(sources.fetch_certificate, host), None
+        except Exception as e:
+            fetched, error = None, sources.explain(e)
+        with session() as s:
+            return source_page(request, s, get_source(s, sid), fetched=fetched, errors=[error] if error else None)
+
+    @app.post("/sources/{sid}/f5/trust-cert")
+    async def f5_trust_cert(sid: int, request: Request):
+        f = await checked_form(request)
+        try:
+            cert = x509.load_pem_x509_certificate(f.get("pem", "").encode())
+        except ValueError:
+            raise HTTPException(400, "Not a certificate") from None
+        fp = cert.fingerprint(hashes.SHA256()).hex(":").upper()
+        if fp != f.get("fingerprint"):
+            raise HTTPException(400, "The certificate does not match the fingerprint shown; fetch it again")
+        with session() as s:
+            sc = get_source(s, sid)
+            sc.settings = {**sc.settings, "ca_pem": cert.public_bytes(serialization.Encoding.PEM).decode(), "ca_fingerprint": fp,
+                           "ca_subject": cert.subject.rfc4514_string(), "ca_expires": cert.not_valid_after_utc.date().isoformat()}
+            s.commit()
+            return RedirectResponse(f"/sources/{sid}?msg=trusted", 303)
+
+    @app.get("/jobs", response_class=HTMLResponse)
+    def jobs_list(request: Request):
+        with session() as s:
+            return page(request, "jobs.html", active="jobs", jobs=s.query(Job).order_by(Job.id.desc()).limit(200).all())
+
+    @app.get("/jobs/{jid}", response_class=HTMLResponse)
+    def job_detail(jid: int, request: Request):
+        with session() as s:
+            job = s.get(Job, jid)
+            if job is None:
+                raise HTTPException(404)
+            sc = s.query(SourceConfig).filter_by(name=job.source).one_or_none()
+            return page(request, "job.html", active="jobs", job=job, sc=sc, refresh=job.status in jobs.ACTIVE)
+
+    # ------------------------------------------------------------ inventory
 
     @app.get("/", response_class=HTMLResponse)
     def overview(request: Request):
