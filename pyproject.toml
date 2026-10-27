@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "waf-inventory"
-version = "0.2.0"
+version = "0.2.1"
 description = "Read-only inventory of apps, WAF configuration and discovered APIs behind Azure WAF and F5 BIG-IP"
 readme = "README.md"
 license = "AGPL-3.0-only"
