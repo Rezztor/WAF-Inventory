@@ -1,24 +1,25 @@
 name: CI
 
+# Push only, never pull_request: the repository is public and runs on Rezztor's own runner, so a pull request from a
+# fork would run its code there. Our pull requests come from branches here, so their pushes are tested.
 on:
   push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # GitHub-hosted runners are not used (Actions billing); each job runs in a container on the CI VM.
+    runs-on: [self-hosted, linux, ci-vm]
+    container: python:${{ matrix.python }}-slim
+    timeout-minutes: 20
     strategy:
       matrix:
         python: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
       - run: pip install -e ".[test]" ruff==0.6.9
       - run: ruff check src tests
       - run: pytest -q
