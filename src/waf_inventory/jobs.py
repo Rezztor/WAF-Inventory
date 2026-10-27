@@ -4,15 +4,25 @@ from __future__ import annotations
 import queue
 import sys
 import threading
+import time
+from datetime import datetime, timedelta
 
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from . import findings, sources
 from .auth import _now
-from .models import Job, SourceConfig, now, source
+from .models import Job, SourceConfig, get_setting, now, source
 
 ACTIVE = ("queued", "running")
+GENERAL = {"collapse_threshold": 10, "min_hits": 5, "job_retention_days": 90}
+
+
+def effective_cfg(s: Session, cfg: dict) -> dict:
+    """config.toml overlaid with what was changed under Settings."""
+    general = get_setting(s, "general")
+    discovery = {**cfg.get("discovery", {}), **{k: general[k] for k in ("collapse_threshold", "min_hits") if k in general}}
+    return {**cfg, "discovery": discovery}
 
 
 def interrupted(engine: Engine) -> None:
@@ -53,7 +63,11 @@ class Runner:
 
     def _loop(self) -> None:
         while True:
-            self.run(self.q.get())
+            job_id = self.q.get()
+            try:
+                self.run(job_id)
+            except Exception as e:  # the worker must outlive any one job; a restart marks that job interrupted
+                print(f"jobs: job {job_id}: {type(e).__name__}: {e}", file=sys.stderr)
 
     def run(self, job_id: int) -> Job:
         with Session(self.engine, expire_on_commit=False) as js, Session(self.engine) as s:
@@ -72,14 +86,16 @@ class Runner:
                 if sc is None:
                     raise ValueError("The source was deleted before the job ran")
                 log(f"Collecting {sc.name}: {sources.TYPES[sc.type][0]}")
-                job.summary = sources.collect(s, self.cfg, sc, log)
+                cfg = effective_cfg(s, self.cfg)
+                job.summary = sources.collect(s, cfg, sc, log)
                 log(job.summary)
                 from .cli import load_specs
-                out = findings.run(s, load_specs(self.cfg))
+                out = findings.run(s, load_specs(cfg))
                 log(f"Findings recomputed: {len(out)}")
                 job.status = "ok"
             except Exception as e:  # one failed source must not stop the worker
                 s.rollback()
+                sc = s.query(SourceConfig).filter_by(name=job.source).one_or_none()  # it may have been deleted meanwhile
                 job.status, job.summary = "error", sources.explain(e, sc)
                 log(f"Failed: {job.summary}")
                 if sc is not None:
@@ -89,3 +105,36 @@ class Runner:
             job.finished = _now()
             js.commit()
             return job
+
+
+def tick(s: Session, runner: Runner, at: datetime) -> list[str]:
+    """Queue every source whose scheduled time has come; drop job history past its retention. Returns names queued."""
+    queued = []
+    for sc in s.query(SourceConfig):
+        sched, nxt = sc.settings.get("schedule"), sc.settings.get("next_run")
+        if not sched or sched.get("every", "off") == "off":
+            continue
+        if nxt and datetime.fromisoformat(nxt) <= at:
+            runner.submit(s, sc, trigger="schedule")
+            queued.append(sc.name)
+        if not nxt or datetime.fromisoformat(nxt) <= at:
+            following = sources.next_run(sched, at)
+            sc.settings = {**sc.settings, "next_run": following.isoformat() if following else None}
+    days = get_setting(s, "general").get("job_retention_days", GENERAL["job_retention_days"])
+    s.query(Job).filter(Job.finished < at - timedelta(days=days)).delete()
+    s.commit()
+    return queued
+
+
+def start_scheduler(engine: Engine, runner: Runner, every: float = 30) -> threading.Thread:
+    def loop() -> None:
+        while True:
+            try:
+                with Session(engine) as s:
+                    tick(s, runner, _now())
+            except Exception as e:  # a bad row must not stop scheduling for good
+                print(f"scheduler: {type(e).__name__}: {e}", file=sys.stderr)
+            time.sleep(every)
+    th = threading.Thread(target=loop, name="waf-inv-scheduler", daemon=True)
+    th.start()
+    return th

@@ -7,7 +7,7 @@
 <header class="top"><b>WAF Inventory</b>
 {% if user %}<nav aria-label="Main"><a href="/" class="{{ 'on' if not active }}">Overview</a>
 {% for key, (title, _) in pages.items() if key != "sources" %}<a href="/t/{{ key }}" class="{{ 'on' if active == key }}">{{ title }}</a>{% endfor %}
-<span class="sep" aria-hidden="true"></span><a href="/sources" class="{{ 'on' if active == 'console_sources' }}">Sources</a><a href="/jobs" class="{{ 'on' if active == 'jobs' }}">Jobs</a>
+<span class="sep" aria-hidden="true"></span><a href="/sources" class="{{ 'on' if active == 'console_sources' }}">Sources</a><a href="/jobs" class="{{ 'on' if active == 'jobs' }}">Jobs</a><a href="/settings" class="{{ 'on' if active == 'settings' }}">Settings</a>
 </nav>
 <form class="who" method="post" action="/logout"><span class="muted">{{ user }}</span><input type="hidden" name="csrf" value="{{ csrf }}"><button>Sign out</button></form>{% endif %}
 </header>

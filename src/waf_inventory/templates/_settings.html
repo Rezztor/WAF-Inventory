@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Settings · WAF Inventory{% endblock %}
+{% block body %}
+<h1>Settings</h1>
+<nav class="tabs" aria-label="Settings">{% for key, label, href in [("general", "General", "/settings"), ("security", "HTTPS and sign-in", "/settings/security"), ("account", "Account", "/settings/account"), ("transfer", "Import and export", "/settings/transfer"), ("audit", "Audit log", "/audit")] %}<a href="{{ href }}" class="{{ 'on' if tab == key }}" {{ 'aria-current=page' if tab == key }}>{{ label }}</a>{% endfor %}</nav>
+{% if msg %}<p class="note" role="status">{{ msg }}</p>{% endif %}
+{% if errors %}<div class="alert" role="alert"><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+{% block settings %}{% endblock %}
+{% endblock %}

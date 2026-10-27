@@ -1,0 +1,13 @@
+{% extends "_settings.html" %}
+{% block settings %}
+<form class="f" method="get" action="/audit">
+<label>Action<select name="action"><option value="">all</option>{% for a in actions %}<option {{ "selected" if a == action }}>{{ a }}</option>{% endfor %}</select></label>
+<label>User<select name="user"><option value="">all</option>{% for u in users %}<option {{ "selected" if u == who }}>{{ u }}</option>{% endfor %}</select></label>
+<button>Filter</button> <a href="/audit?{{ query }}{{ '&' if query }}format=csv">Export CSV</a>
+</form>
+{% if rows %}<div class="tw"><table>
+<thead><tr><th>Time (UTC)</th><th>User</th><th>IP</th><th>Action</th><th>Target</th><th>Detail</th></tr></thead>
+<tbody>{% for r in rows %}<tr><td>{{ r.time.strftime("%d %b %Y %H:%M:%S") }}</td><td>{{ r.user or "" }}</td><td>{{ r.ip or "" }}</td>
+<td>{{ r.action }}</td><td>{{ r.target }}</td><td>{% for k, v in r.detail.items() if v not in (None, [], "") %}<b>{{ k }}</b>: {{ v | join(", ") if v is iterable and v is not string else v }}{{ " · " if not loop.last }}{% endfor %}</td></tr>{% endfor %}</tbody></table></div>
+{% else %}<p class="muted">Nothing recorded yet.</p>{% endif %}
+{% endblock %}

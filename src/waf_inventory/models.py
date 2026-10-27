@@ -178,6 +178,34 @@ class Job(Base):
     log: Mapped[str] = mapped_column(default="")
 
 
+class Setting(Base):
+    """Console settings that override config.toml, e.g. discovery thresholds."""
+    __tablename__ = "setting"
+    key: Mapped[str] = mapped_column(primary_key=True)
+    value: Mapped[dict] = mapped_column(JSON)
+
+
+class AuditLog(Base):
+    """Who changed what. Never holds a secret value."""
+    __tablename__ = "audit_log"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    time: Mapped[datetime]
+    user: Mapped[str | None]
+    ip: Mapped[str | None]
+    action: Mapped[str]
+    target: Mapped[str] = mapped_column(default="")
+    detail: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+def get_setting(s: Session, key: str, default: dict | None = None) -> dict:
+    row = s.get(Setting, key)
+    return row.value if row else (default or {})
+
+
+def put_setting(s: Session, key: str, value: dict) -> None:
+    s.merge(Setting(key=key, value=value))
+
+
 def connect(url: str) -> Session:
     if "://" not in url:
         url = f"sqlite:///{url}"

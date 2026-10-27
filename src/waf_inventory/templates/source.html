@@ -23,28 +23,56 @@
 {% if f.help %}<small>{{ f.help }}</small>{% endif %}</label>
 {% elif f.kind == "list" %}<label>{{ f.label }}<textarea name="{{ f.key }}" rows="3">{{ v | join("\n") if v is iterable and v is not string else (v or "") }}</textarea>
 {% if f.help %}<small>{{ f.help }}</small>{% endif %}</label>
+{% elif f.kind == "date" %}<label>{{ f.label }}<input type="date" name="{{ f.key }}" value="{{ v or '' }}">
+{% if f.help %}<small>{{ f.help }}</small>{% endif %}</label>
 {% else %}<label>{{ f.label }}<input name="{{ f.key }}" value="{{ v if v is not none else '' }}" {{ 'inputmode=numeric' if f.kind == 'int' }} {{ 'required' if f.required }}>
 {% if f.help %}<small>{{ f.help }}</small>{% endif %}</label>
 {% endif %}{% endfor %}
+{% set sch = sc.settings.get("schedule") or {} %}
+<fieldset class="schedule"><legend>Collect automatically</legend>
+<label>How often<select name="schedule_every">{% for val, lab in every %}<option value="{{ val }}" {{ "selected" if (sch.every or "off") == val }}>{{ lab }}</option>{% endfor %}</select></label>
+<label>At (UTC; daily and weekly)<input type="time" name="schedule_at" value="{{ sch.at or '02:00' }}"></label>
+<label>On (weekly)<select name="schedule_day">{% for d in days %}<option value="{{ loop.index0 }}" {{ "selected" if (sch.day or 0) == loop.index0 }}>{{ d }}</option>{% endfor %}</select></label>
+{% if sc.settings.next_run %}<small>Next run {{ sc.settings.next_run[:16] | replace("T", " ") }} UTC.</small>{% endif %}
+</fieldset>
 <div class="actions"><button class="primary">{{ "Add source" if new else "Save" }}</button>{% if new %}<a href="/sources">Cancel</a>{% endif %}</div>
 </form>
 
 <div>
+{% if found %}
+<section class="panel stack"><h2>Choose what to collect</h2>
+<form method="post" action="/sources/{{ sc.id }}/scope"><input type="hidden" name="csrf" value="{{ csrf }}">
+<fieldset><legend>Subscriptions the app can read. None ticked: all of them, including ones added later.</legend>
+{% for id, name in found.subscriptions %}<label class="check"><input type="checkbox" name="subscriptions" value="{{ id }}" {{ "checked" if id in (sc.settings.subscriptions or []) }}> {{ name }} <code>{{ id }}</code></label>
+{% else %}<p class="muted">None. Give the app registration the Reader role on the subscriptions to inventory.</p>{% endfor %}</fieldset>
+<fieldset><legend>Log Analytics workspaces for access logs. None ticked: configuration only, no API discovery.</legend>
+{% for w in found.workspaces %}<label class="check"><input type="checkbox" name="log_workspaces" value="{{ w.id }}" {{ "checked" if w.id in (sc.settings.log_workspaces or []) }}> {{ w.name }} <span class="muted">({{ w.subscription }})</span></label>
+{% else %}<p class="muted">No workspaces visible in these subscriptions.</p>{% endfor %}</fieldset>
+<button class="primary">Save selection</button></form>
+</section>
+{% endif %}
 {% if not new %}
 <section class="panel"><h2>Check and collect</h2>
 <p class="muted">Test signs in and reads a little, without changing the inventory. Run now collects everything.</p>
 <div class="actions">{{ post("/sources/" ~ sc.id ~ "/test", "Test connection") }}{{ post("/sources/" ~ sc.id ~ "/run", "Run now", "primary") }}</div>
 </section>
 
-{% if sc.type == "azure" and sc.settings.auth == "certificate" %}{% set c = secrets.get("certificate") %}
+{% if sc.type == "azure" and sc.settings.auth == "certificate" %}{% set c = secrets.get("certificate") %}{% set n = secrets.get("certificate_next") %}
 <section class="panel"><h2>Sign-in certificate</h2>
 {% if c %}<dl class="kv"><dt>Thumbprint</dt><dd><code>{{ c.meta.thumbprint }}</code></dd><dt>Expires</dt><dd>{{ c.meta.expires }}</dd></dl>
-<ol class="muted"><li><a href="/sources/{{ sc.id }}/azure/certificate.cer">Download the .cer</a> (public part only; the private key stays here, encrypted).</li>
+{% if not n %}<ol class="muted"><li><a href="/sources/{{ sc.id }}/azure/certificate.cer">Download the .cer</a> (public part only; the private key stays here, encrypted).</li>
 <li>In the Microsoft Entra admin center: App registrations › your app › Certificates &amp; secrets › Certificates › Upload certificate.</li>
 <li>Check the thumbprint Azure shows matches, then Test connection.</li></ol>
-<div class="actions">{{ post("/sources/" ~ sc.id ~ "/azure/certificate", "Make a new certificate") }}
-<small class="muted">Replaces this one: upload the new .cer before the next run.</small></div>
+<div class="actions">{{ post("/sources/" ~ sc.id ~ "/azure/certificate", "Rotate: make a second certificate") }}
+<small class="muted">The current one keeps working until the new one passes a test.</small></div>{% endif %}
 {% else %}<p>No certificate yet.</p>{{ post("/sources/" ~ sc.id ~ "/azure/certificate", "Make a certificate", "primary") }}{% endif %}
+{% if n %}<h2>New certificate, waiting to replace it</h2>
+<dl class="kv"><dt>Thumbprint</dt><dd><code>{{ n.meta.thumbprint }}</code></dd><dt>Expires</dt><dd>{{ n.meta.expires }}</dd></dl>
+<ol class="muted"><li><a href="/sources/{{ sc.id }}/azure/certificate.cer?next=1">Download the new .cer</a> and upload it to the same app registration (keep the old one there for now).</li>
+<li>Test the new certificate. If it works, it replaces the old one here; then delete the old one in Azure.</li></ol>
+<div class="actions"><form method="post" action="/sources/{{ sc.id }}/test"><input type="hidden" name="csrf" value="{{ csrf }}">
+<input type="hidden" name="certificate" value="certificate_next"><button class="primary">Test the new certificate</button></form>
+{{ post("/sources/" ~ sc.id ~ "/azure/cancel-rotation", "Cancel rotation") }}</div>{% endif %}
 </section>
 {% endif %}
 

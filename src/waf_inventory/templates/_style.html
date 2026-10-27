@@ -47,7 +47,7 @@ header.top nav .sep{width:1px;background:var(--line);margin:4px 6px}
 .panel{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:0 0 16px}
 .panel h2{margin:0 0 10px;font-size:1rem}
 .stack label{display:flex;flex-direction:column;gap:4px;margin:0 0 14px;font-size:13px;color:var(--muted)}
-.stack label>input,.stack textarea,.login input{color:var(--fg);font-size:14px;background:var(--bg);border-color:var(--muted)}
+.stack select,.stack label>input,.stack textarea,.login input{color:var(--fg);font-size:14px;background:var(--bg);border-color:var(--muted)}
 .stack small{font-size:12px} .stack fieldset{border:0;padding:0;margin:0 0 14px} .stack legend{font-size:13px;color:var(--muted);margin-bottom:4px}
 label.check{flex-direction:row!important;align-items:center;gap:8px!important;color:var(--fg)!important;font-size:14px!important;margin:0 0 6px!important}
 textarea{font:13px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--card);resize:vertical}
@@ -59,11 +59,17 @@ button.danger{color:var(--bad);border-color:var(--bad)}
 .addlist{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}
 .addlist a{padding:6px 12px;border:1px solid var(--line);border-radius:6px;background:var(--card);text-decoration:none;font-size:14px}
 pre.log{max-height:none;white-space:pre-wrap}
+select{font:inherit;padding:5px 8px;border-radius:6px;border:1px solid var(--line)}
+fieldset.schedule{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0 12px}
+fieldset.schedule legend,fieldset.schedule small{grid-column:1/-1}
+.tabs{display:flex;flex-wrap:wrap;gap:4px;margin:0 0 18px;border-bottom:1px solid var(--line)}
+.tabs a{padding:6px 12px;text-decoration:none;color:var(--fg);border-bottom:2px solid transparent}
+.tabs a.on{border-color:var(--accent);font-weight:600}
 form.who{margin-left:auto;display:flex;gap:10px;align-items:center;font-size:13px}
 .login{max-width:360px;margin:8vh auto 0;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:24px}
 .login h1{margin-bottom:20px} .login label{display:flex;flex-direction:column;gap:4px;margin-bottom:14px;font-size:13px;color:var(--muted)}
 .login input{padding:8px 10px} .login button{width:100%;padding:8px;background:var(--accent);color:var(--bg);border:0;font-weight:600}
 .alert{padding:8px 12px;border-radius:8px;margin-bottom:14px;background:var(--bad-bg);color:var(--bad);font-size:14px}
-dl.kv{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;margin:0} dl.kv dt{color:var(--muted)} dl.kv dd{margin:0}
+dl.kv{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;margin:0} dl.kv dt{color:var(--muted)} dl.kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
 @media (max-width:700px){main{padding:16px}header.top{padding:10px 16px}table{min-width:720px}td{overflow-wrap:break-word}}
 </style>

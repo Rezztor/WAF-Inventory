@@ -179,13 +179,20 @@ def cmd_serve(args, cfg, session) -> int:
     if not auth.has_users(session):
         sys.exit("No admin account yet. Create one first: waf-inv reset-password <username>")
     if n := sources.import_config(session, cfg):
+        from .models import AuditLog
+        session.add(AuditLog(time=auth._now(), user=None, ip=None, action="sources imported", target="config file", detail={"count": n}))
+        session.commit()
         print(f"Imported {n} source(s) from the config file; they are managed in the console from now on", flush=True)
     ssl = {}
     if args.tls_dir:
         cert, key = tls.ensure_cert(Path(args.tls_dir))
         ssl = {"ssl_certfile": str(cert), "ssl_keyfile": str(key)}
         print(f"HTTPS certificate SHA-256 fingerprint: {tls.fingerprint(cert)}", flush=True)
-    uvicorn.run(create_app(cfg["database"], cfg), host=args.host, port=args.port, server_header=False, **ssl)
+    app = create_app(cfg["database"], cfg, tls_dir=args.tls_dir, background=True)
+    config = uvicorn.Config(app, host=args.host, port=args.port, server_header=False, **ssl)
+    if ssl:  # Settings > HTTPS installs a new certificate: load it into the live context, no restart
+        app.state.reload_tls = lambda: config.ssl.load_cert_chain(ssl["ssl_certfile"], ssl["ssl_keyfile"])
+    uvicorn.Server(config).run()
     return 0
 
 

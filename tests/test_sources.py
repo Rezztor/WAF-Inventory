@@ -2,63 +2,17 @@
 import shutil
 import ssl
 import threading
-import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import httpx
 import pytest
-from conftest import EXAMPLES, PASSWORD
+from conftest import PASSWORD, add, csrf, wait
 from cryptography import x509
 from cryptography.fernet import Fernet
-from fastapi.testclient import TestClient
 
-from waf_inventory import auth, f5, report, sources, tls, vault
+from waf_inventory import f5, report, sources, tls, vault
 from waf_inventory.cli import load_config, main
 from waf_inventory.models import Job, Secret, SourceConfig, connect
-from waf_inventory.web import create_app
-
-
-@pytest.fixture
-def master_key(tmp_path, monkeypatch):
-    key = tmp_path / "master_key"
-    key.write_text(Fernet.generate_key().decode() + "\n")
-    monkeypatch.setenv("WAF_INV_MASTER_KEY_FILE", str(key))
-    return key
-
-
-@pytest.fixture
-def console(tmp_path, master_key, monkeypatch):
-    """A fresh signed-in console over a copy of the examples folder (its demo.toml gives discovery settings)."""
-    monkeypatch.setattr(auth, "_fails", {})
-    d = tmp_path / "site"
-    shutil.copytree(EXAMPLES, d)
-    cfg = load_config(str(d / "demo.toml"))
-    db = str(d / "console.db")
-    with connect(db) as s:
-        auth.set_password(s, "admin", PASSWORD)
-    c = TestClient(create_app(db, cfg))
-    c.post("/login", data={"username": "admin", "password": PASSWORD})
-    c.db, c.dir = db, d
-    return c
-
-
-def csrf(c: TestClient, url: str = "/sources") -> str:
-    return c.get(url).text.split('name="csrf" value="')[1].split('"')[0]
-
-
-def add(c: TestClient, kind: str, **fields) -> int:
-    r = c.post(f"/sources/new/{kind}", data={"csrf": csrf(c), **fields}, follow_redirects=False)
-    assert r.status_code == 303, r.text
-    return int(r.headers["location"].split("/")[2].split("?")[0])
-
-
-def wait(c: TestClient, job_url: str) -> str:
-    for _ in range(200):
-        page = c.get(job_url).text
-        if "refreshes every 2 seconds" not in page:
-            return page
-        time.sleep(0.05)
-    raise AssertionError("job did not finish")
 
 
 def test_vault_encrypts_and_needs_the_key(master_key, tmp_path, monkeypatch):
@@ -95,7 +49,7 @@ def test_demo_sources_added_tested_and_collected_from_the_browser(console):
     bad = add(c, "f5_offline", name="broken", path="nowhere")
     assert "does not exist on the server" in c.post(f"/sources/{bad}/test", data={"csrf": csrf(c)}).text
     job = c.post(f"/sources/{bad}/run", data={"csrf": csrf(c)}, follow_redirects=False).headers["location"]
-    assert "Not found on the server" in wait(c, job) and "failed on their last run" in c.get("/sources").text
+    assert "Not found on the server" in wait(c, job) and "broken: last run failed" in c.get("/sources").text
 
 
 def test_f5_password_is_write_only_and_encrypted(console):
@@ -110,7 +64,8 @@ def test_f5_password_is_write_only_and_encrypted(console):
     assert r.status_code == 303
     with connect(c.db) as s:
         sc = s.query(SourceConfig).one()
-        assert sc.settings == {"host": "192.0.2.11", "username": "auditor", "export": False}
+        assert sc.settings == {"host": "192.0.2.11", "username": "auditor", "export": False,
+                               "schedule": {"every": "off", "at": "02:00", "day": 0}, "next_run": None}
         assert vault.get(sc, "password") == "Very-Secret-Pw1"  # blank field kept it
     assert b"Very-Secret-Pw1" not in open(c.db, "rb").read()
 

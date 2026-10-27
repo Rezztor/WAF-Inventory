@@ -3,19 +3,18 @@
 {% block body %}
 <h1>Sources</h1>
 {% if msg %}<p class="note" role="status">{{ msg }}</p>{% endif %}
-{% set failing = rows | selectattr("inv") | selectattr("inv.status", "equalto", "error") | list %}
-{% if failing %}<div class="alert" role="alert"><b>{{ failing | length }} source(s) failed on their last run.</b>
-<ul>{% for r in failing %}<li><a href="/sources/{{ r.sc.id }}">{{ r.sc.name }}</a>: {{ r.inv.error }}</li>{% endfor %}</ul></div>{% endif %}
+{% include "_problems.html" %}
 <div class="addlist" aria-label="Add a source"><span class="muted">Add:</span>
 {% for key, (title, _) in types.items() %}<a href="/sources/new/{{ key }}">{{ title }}</a>{% endfor %}</div>
 {% if rows %}
 <div class="tw"><table>
-<thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Last run</th><th>Credential</th><th></th></tr></thead>
+<thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Last run</th><th>Next run (UTC)</th><th>Credential</th><th></th></tr></thead>
 <tbody>{% for r in rows %}<tr>
 <td><a href="/sources/{{ r.sc.id }}">{{ r.sc.name }}</a></td>
 <td>{{ r.title }}</td>
 <td>{% if r.job %}<a class="b detect" href="/jobs/{{ r.job.id }}">{{ r.job.status }}</a>{% elif r.inv %}<span class="b {{ r.inv.status }}">{{ r.inv.status }}</span>{% else %}<span class="b na">never run</span>{% endif %}</td>
 <td>{{ r.inv.last_run.strftime('%d %b %Y %H:%M') if r.inv and r.inv.last_run else '' }}</td>
+<td>{{ r.sc.settings.next_run[:16] | replace("T", " ") if r.sc.settings.next_run else "manual" }}</td>
 <td>{% if r.secrets.certificate %}Certificate, expires {{ r.secrets.certificate.meta.expires }}{% elif r.secrets.client_secret %}Client secret set{% elif r.secrets.password %}Password set{% elif r.sc.type == 'azure' and r.sc.settings.auth == 'default' %}This machine's Azure login{% else %}<span class="muted">none needed</span>{% endif %}</td>
 <td><form method="post" action="/sources/{{ r.sc.id }}/run"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Run now</button></form></td>
 </tr>{% endfor %}</tbody></table></div>

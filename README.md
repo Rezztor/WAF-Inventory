@@ -48,7 +48,7 @@ sh install.sh
 - **Upgrade:** `docker compose pull && docker compose up -d`. To pin a version, set `WAF_INV_VERSION=1.2.3`.
 - **Verify an image:** `gh attestation verify oci://ghcr.io/rezztor/waf-inventory:<version> --owner Rezztor`
 
-**Certificate from your internal CA.** The private key is generated inside the container and never leaves it:
+**Certificate from your internal CA:** use Settings › HTTPS and sign-in in the console, or the command line below. Either way, the private key is generated inside the container and never leaves it:
 
 ```bash
 docker compose exec -T waf-inventory waf-inv tls csr --dns waf.corp.example --ip 10.0.0.5 > waf.csr
@@ -63,7 +63,11 @@ docker compose restart
 - **Azure:** the console makes the sign-in certificate. Download the `.cer`, upload it to the app registration, then test. A client secret also works.
 - **F5 BIG-IP:** Fetch certificate shows the device's certificate. Compare its SHA-256 fingerprint on the BIG-IP and trust it; from then on, only that certificate is accepted.
 - **Credentials** are encrypted in the database with the master key (`/run/secrets/master_key`, or the file named by `WAF_INV_MASTER_KEY_FILE`). They are never shown again; leave a field blank to keep the saved value.
-- **`config.toml`:** sources found there at first start are imported once, with F5 passwords read from their environment variables. From then on, `waf-inv collect` and the console both use the sources stored in the console, and every run appears under Jobs.
+- **Schedules:** each source can collect hourly, daily or weekly (times in UTC). Overview and Sources warn about failed runs and about certificates or client secrets expiring within 30 days.
+- **Rotating the Azure certificate:** "Rotate" makes a second certificate while the first keeps working. Upload the new `.cer`, then "Test the new certificate"; once that passes, the new one replaces the old one.
+- **Picking scope:** after a successful Azure test, the subscriptions and Log Analytics workspaces the app can see appear as tick boxes.
+- **`config.toml`:** sources found there at first start are imported once, with F5 passwords read from their environment variables. From then on, `waf-inv collect` and the console both use the sources stored in the console, and every run appears under Jobs. Settings › Import and export copies sources between sites as TOML, without secrets.
+- **Settings:** discovery thresholds and job history, HTTPS (CSR for your internal CA, then paste the signed certificate; it is used for new connections immediately), password change, and an audit log of every sign-in and change, exportable as CSV.
 
 **From a config file** (local use without the console):
 
