@@ -1,25 +1,32 @@
-{% extends "base.html" %}
-{% block title %}Sources · WAF Inventory{% endblock %}
-{% block body %}
-<h1>Sources</h1>
-{% if msg %}<p class="note" role="status">{{ msg }}</p>{% endif %}
+{% extends "_settings.html" %}
+{% block title %}Connections · WAF Inventory{% endblock %}
+{% block settings %}
 {% include "_problems.html" %}
-<div class="addlist" aria-label="Add a source"><span class="muted">Add:</span>
-{% for key, (title, _) in types.items() %}<a href="/sources/new/{{ key }}">{{ title }}</a>{% endfor %}</div>
+<div class="row" style="align-items:flex-end">
+<div class="cell" style="flex:1 1 360px;gap:4px"><h2 class="big">Connections</h2>
+<p style="margin:0;color:var(--ink-2);max-width:62ch">Where WAF Inventory reads configuration and traffic from. Every connection uses a read-only account, and secrets are stored encrypted on this server.</p></div>
+<a class="btn" href="/sources/new/f5_rest"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>Add F5 device</a>
+<a class="btn btn-p" href="/sources/new/azure"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>Add Azure WAF</a>
+</div>
 {% if rows %}
-<div class="tw"><table>
-<thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Last run</th><th>Next run (UTC)</th><th>Credential</th><th></th></tr></thead>
-<tbody>{% for r in rows %}<tr>
-<td><a href="/sources/{{ r.sc.id }}">{{ r.sc.name }}</a></td>
-<td>{{ r.title }}</td>
-<td>{% if r.job %}<a class="b detect" href="/jobs/{{ r.job.id }}">{{ r.job.status }}</a>{% elif r.inv %}<span class="b {{ r.inv.status }}">{{ r.inv.status }}</span>{% else %}<span class="b na">never run</span>{% endif %}</td>
-<td>{{ r.inv.last_run.strftime('%d %b %Y %H:%M') if r.inv and r.inv.last_run else '' }}</td>
-<td>{{ r.sc.settings.next_run[:16] | replace("T", " ") if r.sc.settings.next_run else "manual" }}</td>
-<td>{% if r.secrets.certificate %}Certificate, expires {{ r.secrets.certificate.meta.expires }}{% elif r.secrets.client_secret %}Client secret set{% elif r.secrets.password %}Password set{% elif r.sc.type == 'azure' and r.sc.settings.auth == 'default' %}This machine's Azure login{% else %}<span class="muted">none needed</span>{% endif %}</td>
-<td><form method="post" action="/sources/{{ r.sc.id }}/run"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Run now</button></form></td>
-</tr>{% endfor %}</tbody></table></div>
+<div class="actions"><span class="pill neu">{{ rows | length }} connection{{ "s" if rows | length != 1 }}</span>
+{% for tone, label in (("ok", "working"), ("crit", "failing"), ("warn", "expiring soon")) %}{% set n = rows | selectattr("tone", "eq", tone) | list | length %}{% if n %}<span class="pill {{ tone }}">{{ n }} {{ label }}</span>{% endif %}{% endfor %}</div>
+<section class="card list" style="overflow:hidden" aria-label="Connections">
+{% for r in rows %}<div class="item">
+<div class="badge" aria-hidden="true">{{ r.badge }}</div>
+<div class="cell" style="flex:1 1 230px"><b style="overflow-wrap:anywhere"><a href="/sources/{{ r.sc.id }}" style="color:inherit">{{ r.name }}</a></b><span class="muted">{{ r.title }}</span></div>
+<div class="cell" style="flex:1 1 220px"><span style="color:var(--ink-2)">{{ r.method }}</span><span class="hint" style="overflow-wrap:anywhere">{{ r.note }}</span></div>
+<div class="cell" style="flex:0 1 190px"><span style="color:var(--ink-2)">{{ r.schedule }}</span><span class="hint">Last run {{ r.inv.last_run.strftime('%d %b, %H:%M') if r.inv and r.inv.last_run else 'never' }}</span></div>
+{% if r.job %}<a class="pill {{ r.job.status }}" href="/jobs/{{ r.job.id }}">{{ r.status }}</a>{% else %}<span class="pill {{ r.tone }}">{{ r.status }}</span>{% endif %}
+<div class="actions"><form method="post" action="/sources/{{ r.sc.id }}/test"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Test</button></form>
+<form method="post" action="/sources/{{ r.sc.id }}/run"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Run now</button></form>
+<a class="btn" href="/sources/{{ r.sc.id }}">Edit</a></div>
+</div>{% endfor %}
+<div class="item hint" style="background:var(--surface-alt)">Also: <a href="/sources/new/f5_offline">F5 offline files</a> · <a href="/sources/new/azure_bundle">Azure bundle file</a> · <a href="/sources/new/logs">Access-log files</a></div>
+</section>
 {% else %}
-<div class="panel"><h2>No sources yet</h2><p class="muted">Add Azure or an F5 BIG-IP above. Each source is tested before it collects anything,
-and its credentials are stored encrypted. Sources in a config.toml found at first start are imported here automatically.</p></div>
+<div class="card pad"><h2>No connections yet</h2><p class="muted" style="margin:0">Add Azure or an F5 BIG-IP above. Each connection is tested before it collects anything,
+and its credentials are stored encrypted. Sources in a config.toml found at first start are imported here automatically.</p>
+<p class="hint" style="margin:0">Also: <a href="/sources/new/f5_offline">F5 offline files</a> · <a href="/sources/new/azure_bundle">Azure bundle file</a> · <a href="/sources/new/logs">Access-log files</a></p></div>
 {% endif %}
 {% endblock %}

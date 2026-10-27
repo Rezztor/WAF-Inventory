@@ -53,7 +53,7 @@ def collect_source(session, cfg: dict, src: dict, save_raw: str | None = None, c
             if credential is None:
                 from azure.identity import DefaultAzureCredential
                 credential = DefaultAzureCredential()
-            arm = azure.Arm(credential)
+            arm = azure.Arm(credential, cloud=src.get("cloud", "public"))
             bundle = azure.fetch_bundle(arm, src.get("subscriptions", []))
             if src.get("log_workspaces"):
                 observations = list(azure.fetch_observations(arm, src["log_workspaces"], src.get("log_days", 30)))
@@ -67,7 +67,8 @@ def collect_source(session, cfg: dict, src: dict, save_raw: str | None = None, c
         password = password or os.environ.get(src.get("password_env", "F5_PASSWORD"))
         if not password:
             raise RuntimeError(f"set {src.get('password_env', 'F5_PASSWORD')} for {name}")
-        client = f5.F5Client(src["host"], src["username"], password, ca_cert=src.get("ca_pem") or src.get("ca_cert"))
+        client = f5.F5Client(f5.address(src["host"], src.get("port")), src["username"], password,
+                             ca_cert=src.get("ca_pem") or src.get("ca_cert"), token=src.get("token", True))
         client.login()
         try:
             data, warnings = f5.fetch_rest(client, export=src.get("export", True))
@@ -75,7 +76,11 @@ def collect_source(session, cfg: dict, src: dict, save_raw: str | None = None, c
             client.logout()
         for w in warnings:
             log(f"warning: {w}")
-        gateways, policies = f5.build(data)
+        gateways, policies = f5.build(f5.only_partitions(data, src.get("partitions", [])))
+    elif kind == "f5_ssh":  # the console reads the device over SSH and passes what it read
+        if "data" not in src:
+            raise ValueError(f"{name}: SSH sources are collected by the console, not from config.toml")
+        gateways, policies = f5.build(f5.only_partitions(src["data"], src.get("partitions", [])))
     elif kind == "f5_offline":
         gateways, policies = f5.build(f5.load_offline(_path(cfg, src["path"])))
     elif kind == "logs":

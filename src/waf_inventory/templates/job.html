@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Job {{ job.id }} · WAF Inventory{% endblock %}
+{% block crumb %}<div class="crumb"><a href="/jobs">Jobs</a> / {{ job.id }}</div>{% endblock %}
+{% block heading %}{{ job.source }} <span class="b {{ job.status }}">{{ job.status }}</span>{% endblock %}
 {% block body %}
-<p class="crumb"><a href="/jobs">Jobs</a> / {{ job.id }}</p>
-<h1>{{ job.source }} <span class="b {{ 'detect' if refresh else job.status }}">{{ job.status }}</span></h1>
-{% if job.status == 'error' %}<div class="alert" role="alert">{{ job.summary }}{% if sc %} <a href="/sources/{{ sc.id }}">Open the source</a>{% endif %}</div>
-{% elif job.status == 'ok' %}<p class="note">{{ job.summary }}. <a href="/">Open the overview</a></p>
+{% if job.status == 'error' %}<div class="alert" role="alert"><b>Failed</b><span>{{ job.summary }}{% if sc %} <a href="/sources/{{ sc.id }}">Open the connection</a>{% endif %}</span></div>
+{% elif job.status == 'ok' %}<p class="note"><b>Done</b><span>{{ job.summary }}. <a href="/">Open the overview</a></span></p>
 {% else %}<p class="muted" role="status">{{ 'Waiting for another job to finish' if job.status == 'queued' else 'Running' }}. This page refreshes every 2 seconds.</p>{% endif %}
-<dl class="kv"><dt>Trigger</dt><dd>{{ job.trigger }}</dd><dt>Queued</dt><dd>{{ job.created.strftime('%d %b %Y %H:%M:%S') }}</dd>
+<div class="card pad"><dl class="kv"><dt>Trigger</dt><dd>{{ job.trigger }}</dd><dt>Queued</dt><dd>{{ job.created.strftime('%d %b %Y %H:%M:%S') }} UTC</dd>
 {% if job.finished and job.started %}<dt>Took</dt><dd>{{ (job.finished - job.started).total_seconds() | round(1) }} s</dd>{% endif %}</dl>
 <h2>Log</h2>
-<pre class="log">{{ job.log or 'Nothing yet.' }}</pre>
+<pre class="log">{{ job.log or 'Nothing yet.' }}</pre></div>
 {% endblock %}

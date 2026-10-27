@@ -1,22 +1,25 @@
 """Dashboard: server-rendered pages over the inventory, with CSV / JSON / Excel / HTML / OpenAPI exports."""
 from __future__ import annotations
 
+import base64
 import hmac
 import json
 import re
 import tomllib
+from datetime import date, timedelta
+from importlib import metadata
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
-from . import auth, findings, jobs, report, sources, tls, vault
-from .models import AuditLog, Endpoint, Job, Listener, Source, SourceConfig, WafPolicy, connect, get_setting, put_setting
+from . import auth, f5, findings, jobs, report, sources, tls, vault
+from .models import AuditLog, Endpoint, Finding, Job, Listener, Source, SourceConfig, WafPolicy, connect, get_setting, put_setting
 
 PAGES = {  # table -> (title, filter columns)
     "applications": ("Applications", ["application", "gateway", "vendor", "mode"]),
@@ -28,6 +31,8 @@ PAGES = {  # table -> (title, filter columns)
     "sources": ("Sources", ["source", "status"]),
 }
 PUBLIC = {"/login", "/healthz"}
+FONTS = Path(__file__).parent / "static" / "fonts"
+VERSION = metadata.version("waf-inventory")
 HEADERS = {
     "Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
                                "frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
@@ -45,7 +50,12 @@ MESSAGES = {
     "general": "Settings saved. They apply from the next run.",
     "installed": "Certificate installed. New connections use it now; reload the page to see it in your browser.",
     "imported": "Import finished.",
+    "collection": "Saved. Connections on the default schedule now follow it.",
+    "uploaded": "Files uploaded. A collection has started: see Jobs.",
+    "key-trusted": "Host key trusted. Test connection to confirm the sign-in works.",
 }
+AZURE_SIGN_IN = {"certificate": "App registration · certificate", "secret": "App registration · client secret",
+                 "managed_identity": "Managed identity", "default": "This machine's Azure login"}
 MEDIA = {"csv": "text/csv", "json": "application/json",
          "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
 
@@ -73,8 +83,14 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
                        action=action, target=target, detail=detail))
 
     def page(request: Request, template: str, status_code: int = 200, **ctx) -> HTMLResponse:
-        return HTMLResponse(env.get_template(template).render(pages=PAGES, user=request.state.user, csrf=request.state.csrf, **ctx),
-                            status_code=status_code)
+        nav = None
+        if request.state.user:  # the side menu's findings count and collector line
+            with session() as s:
+                nxt = min((x.settings["next_run"] for x in s.query(SourceConfig) if x.settings.get("next_run")), default=None)
+                nav = {"high": s.query(Finding).filter_by(severity="high").count(), "next": nxt, "version": VERSION,
+                       "running": s.query(Job).filter(Job.status == "running").count()}
+        return HTMLResponse(env.get_template(template).render(pages=PAGES, user=request.state.user, csrf=request.state.csrf, nav=nav,
+                                                              **ctx), status_code=status_code)
 
     @app.middleware("http")
     async def guard(request: Request, call_next):
@@ -84,7 +100,7 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
         with session() as s:
             ls = auth.load_session(s, request.cookies.get(auth.COOKIE))
             request.state.user, request.state.csrf = (ls.user.username, ls.csrf) if ls else (None, None)
-        if ls is None and request.url.path not in PUBLIC:
+        if ls is None and request.url.path not in PUBLIC and not request.url.path.startswith("/fonts/"):
             if request.method != "GET":
                 return PlainTextResponse("Sign in first", 401)
             target = request.url.path + (f"?{request.url.query}" if request.url.query else "")
@@ -99,8 +115,14 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
         return {k: v[0] for k, v in parse_qs((await request.body()).decode(), keep_blank_values=True).items()}
 
     async def checked_form(request: Request) -> dict[str, str]:
-        """Form fields of a signed-in POST, after checking its CSRF token."""
-        f = await form(request)
+        """Form fields of a signed-in POST, after checking its CSRF token. Uploaded files land in request.state.files."""
+        request.state.files = []
+        if request.headers.get("content-type", "").startswith("multipart/form-data"):
+            fd = await request.form()
+            f = {k: v for k, v in fd.items() if isinstance(v, str)}
+            request.state.files = [x for x in fd.getlist("files") if not isinstance(x, str) and x.filename]
+        else:
+            f = await form(request)
         if not request.state.csrf or not hmac.compare_digest(f.get("csrf", ""), request.state.csrf):
             raise HTTPException(403, "Invalid form token; reload the page and try again")
         return f
@@ -111,6 +133,13 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
     @app.get("/healthz")
     def healthz():
         return {"status": "ok"}
+
+    @app.get("/fonts/{name}")
+    def font(name: str):
+        f = FONTS / name
+        if f.parent != FONTS or not f.is_file():
+            raise HTTPException(404)
+        return FileResponse(f, headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
     @app.get("/login", response_class=HTMLResponse)
     def login_form(request: Request, next: str = "/", changed: str = ""):
@@ -154,9 +183,59 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
 
     def source_page(request: Request, s: Session, sc: SourceConfig, status_code: int = 200, **ctx) -> HTMLResponse:
         recent = [] if sc.id is None else s.query(Job).filter_by(source=sc.name).order_by(Job.id.desc()).limit(5).all()
+        default = sources.collection(s)
         return page(request, "source.html", status_code, active="console_sources", sc=sc, new=sc.id is None,
-                    title=sources.TYPES[sc.type][0], fields=sources.TYPES[sc.type][1], secrets=sources.secret_state(sc),
-                    recent=recent, every=sources.EVERY, days=sources.DAYS, **ctx)
+                    title=sources.TYPES[sc.type][0], fields={f.key: f for f in sources.TYPES[sc.type][1]},
+                    secrets=sources.secret_state(sc), recent=recent, days=sources.DAYS, zones=sources.ZONES, default=default,
+                    default_text=sources.describe({"every": "default"}, default), sched=sc.settings.get("schedule") or {}, **ctx)
+
+    def connection(sc: SourceConfig | None, inv: Source | None, job: Job | None, default: dict) -> dict:
+        """One row of Settings › Connections and of the overview: how it signs in, its schedule and its state."""
+        st, secrets = (sc.settings, sources.secret_state(sc)) if sc else ({}, {})
+        kind = sc.type if sc else inv.kind
+        soon, note, warn = date.today() + timedelta(days=sources.WARN_DAYS), "", None
+        if kind == "azure":
+            method = AZURE_SIGN_IN.get(st.get("auth"), "")
+            if st.get("auth") == "certificate" and (c := secrets.get("certificate")):
+                note = f"Certificate valid until {c['meta']['expires']}"
+                warn = sources.day(c["meta"]["expires"]) and sources.day(c["meta"]["expires"]) <= soon and "Certificate expires soon"
+            elif st.get("auth") == "secret" and st.get("client_secret_expires"):
+                note = f"Secret expires {st['client_secret_expires']}"
+                warn = (d := sources.day(st["client_secret_expires"])) and d <= soon and "Secret expires soon"
+            else:
+                note = dict(sources.AZURE_CLOUDS).get(st.get("cloud", "public"), "")
+        elif kind == "f5_rest":
+            method = "REST API · " + ("token sign-in" if st.get("token", True) else "basic sign-in")
+            note = "Device certificate pinned" if st.get("ca_fingerprint") else "Device certificate not pinned"
+        elif kind == "f5_ssh":
+            method = "SSH · " + ("key" if st.get("ssh_auth") == "key" else "password")
+            note = "Host key pinned · read-only tmsh" if st.get("host_key") else "Host key not trusted yet"
+        else:
+            method = {"f5_offline": "Offline files", "azure_bundle": "Offline bundle file", "logs": "Access-log files"}.get(kind, kind)
+            note = st.get("path", "")
+        if job:
+            tone, status = "neu", job.status.capitalize()
+        elif inv is None or inv.status == "never run":
+            tone, status = "neu", "Never run"
+        elif inv.status == "error":
+            tone, status = "crit", "Failed"
+        elif warn:
+            tone, status = "warn", warn
+        else:
+            tone, status = "ok", "Working"
+        return {"sc": sc, "inv": inv, "job": job, "name": sc.name if sc else inv.name, "badge": "AZ" if kind.startswith("azure") else
+                "LOG" if kind == "logs" else "F5", "title": sources.TYPES[kind][0] if kind in sources.TYPES else kind,
+                "method": method, "note": note, "tone": tone, "status": status,
+                "schedule": sources.describe(st.get("schedule"), default) if sc else "Config file",
+                "next": st.get("next_run")}
+
+    def connections(s: Session) -> list[dict]:
+        default = sources.collection(s)
+        inv = {x.name: x for x in s.query(Source)}
+        active = {j.source: j for j in s.query(Job).filter(Job.status.in_(jobs.ACTIVE))}
+        rows = [connection(sc, inv.pop(sc.name, None), active.get(sc.name), default)
+                for sc in s.query(SourceConfig).order_by(SourceConfig.name)]
+        return rows + [connection(None, x, active.get(x.name), default) for x in inv.values()]  # collected from config.toml by the CLI
 
     def get_source(s: Session, sid: int) -> SourceConfig:
         sc = s.get(SourceConfig, sid)
@@ -167,11 +246,8 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
     @app.get("/sources", response_class=HTMLResponse)
     def sources_list(request: Request, msg: str = ""):
         with session() as s:
-            inv = {x.name: x for x in s.query(Source)}
-            active = {j.source: j for j in s.query(Job).filter(Job.status.in_(jobs.ACTIVE))}
-            rows = [{"sc": sc, "title": sources.TYPES[sc.type][0], "inv": inv.get(sc.name), "job": active.get(sc.name),
-                     "secrets": sources.secret_state(sc)} for sc in s.query(SourceConfig).order_by(SourceConfig.name)]
-            return page(request, "sources.html", active="console_sources", rows=rows, types=sources.TYPES, msg=MESSAGES.get(msg),
+            rows = [r for r in connections(s) if r["sc"]]
+            return page(request, "sources.html", active="settings", tab="connections", rows=rows, msg=MESSAGES.get(msg),
                         problems=sources.problems(s, tls_cert()))
 
     @app.get("/sources/new/{kind}", response_class=HTMLResponse)
@@ -186,12 +262,15 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
         if kind not in sources.TYPES:
             raise HTTPException(404)
         f = await checked_form(request)
+        files = request.state.files
         with session() as s:
             sc = SourceConfig(type=kind, name=f.get("name", "").strip(), settings=dict(sources.DEFAULTS.get(kind, {})))
             try:
-                errors = ([] if sc.name else ["Name is required"]) + sources.apply_form(sc, f)
+                errors = ([] if sc.name else ["Name is required"]) + sources.apply_form(sc, f, sources.collection(s))
                 if sc.name and s.query(SourceConfig).filter_by(name=sc.name).first():
                     errors.append("A source with that name already exists")
+                if kind == "f5_offline" and not files and not sc.settings.get("path"):
+                    errors.append("Upload the device's files, or enter a folder on the server")
                 if not errors and kind == "azure" and sc.settings.get("auth") == "certificate":
                     sources.make_azure_certificate(sc)
             except vault.VaultError as e:
@@ -199,9 +278,27 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
             if errors:
                 return source_page(request, s, sc, 422, errors=errors)
             s.add(sc)
-            audit(s, request, "source added", sc.name, type=kind, secrets=sorted(sources.secret_state(sc)))
+            s.flush()
+            if files and (errors := sources.save_uploads(sc, files, uploads(sc))):
+                s.rollback()
+                return source_page(request, s, sc, 422, errors=errors)
+            audit(s, request, "source added", sc.name, type=kind, secrets=sorted(sources.secret_state(sc)),
+                  **({"files": [x.filename for x in files]} if files else {}))
             s.commit()
-            return RedirectResponse(f"/sources/{sc.id}?msg=created", 303)
+            return await then(request, s, sc, f.get("then"), "created")
+
+    def uploads(sc: SourceConfig) -> Path:
+        return cfg["_dir"] / "uploads" / str(sc.id)
+
+    async def then(request: Request, s: Session, sc: SourceConfig, step: str | None, msg: str):
+        """After a save: the step the button asked for (Save and test, Fetch certificate, Fetch host key), else back to the page."""
+        if step == "test":
+            return await test_page(request, sc.id, "certificate")
+        if step == "fetch-cert" and sc.type == "f5_rest":
+            return await fetch_cert_page(request, sc.id)
+        if step == "fetch-key" and sc.type == "f5_ssh":
+            return await fetch_key_page(request, sc.id)
+        return RedirectResponse(f"/sources/{sc.id}?msg={msg}", 303)
 
     @app.get("/sources/{sid}", response_class=HTMLResponse)
     def source_edit(sid: int, request: Request, msg: str = ""):
@@ -211,11 +308,16 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
     @app.post("/sources/{sid}")
     async def source_save(sid: int, request: Request):
         f = await checked_form(request)
+        files = request.state.files
         with session() as s:
             sc = get_source(s, sid)
             before = dict(sc.settings)
             try:
-                errors = sources.apply_form(sc, f)
+                errors = sources.apply_form(sc, f, sources.collection(s))
+                if sc.type == "f5_offline" and files:
+                    errors += sources.save_uploads(sc, files, uploads(sc))
+                elif sc.type == "f5_offline" and not sc.settings.get("path"):
+                    errors.append("Upload the device's files, or enter a folder on the server")
                 if not errors and sc.type == "azure" and sc.settings.get("auth") == "certificate" and "certificate" not in sources.secret_state(sc):
                     sources.make_azure_certificate(sc)
             except vault.VaultError as e:
@@ -226,9 +328,13 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
                 return r
             audit(s, request, "source changed", sc.name,
                   settings=sorted(k for k in {*before, *sc.settings} if before.get(k) != sc.settings.get(k) and k != "next_run"),
-                  secrets=[x.key for x in sources.TYPES[sc.type][1] if x.kind == "secret" and f.get(x.key, "").strip()])
+                  secrets=[x.key for x in sources.TYPES[sc.type][1] if x.kind == "secret" and f.get(x.key, "").strip()],
+                  **({"files": [x.filename for x in files]} if files else {}))
             s.commit()
-            return RedirectResponse(f"/sources/{sid}?msg=saved", 303)
+            if files:
+                runner.submit(s, sc, trigger="upload")
+                return RedirectResponse(f"/sources/{sid}?msg=uploaded", 303)
+            return await then(request, s, sc, f.get("then"), "saved")
 
     def _test(sid: int, certificate: str) -> tuple[bool, list[str], dict | None]:  # in a worker thread: it waits on the network
         with session() as s:
@@ -242,7 +348,9 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
     async def source_test(sid: int, request: Request):
         """Test connection. With certificate=certificate_next (rotation), a pass makes the new certificate the one in use."""
         f = await checked_form(request)
-        certificate = "certificate_next" if f.get("certificate") == "certificate_next" else "certificate"
+        return await test_page(request, sid, "certificate_next" if f.get("certificate") == "certificate_next" else "certificate")
+
+    async def test_page(request: Request, sid: int, certificate: str) -> HTMLResponse:
         ok, lines, found = await run_in_threadpool(_test, sid, certificate)
         with session() as s:
             sc = get_source(s, sid)
@@ -332,8 +440,12 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
     @app.post("/sources/{sid}/f5/fetch-cert", response_class=HTMLResponse)
     async def f5_fetch_cert(sid: int, request: Request):
         await checked_form(request)
+        return await fetch_cert_page(request, sid)
+
+    async def fetch_cert_page(request: Request, sid: int) -> HTMLResponse:
         with session() as s:
-            host = get_source(s, sid).settings.get("host", "")
+            st = get_source(s, sid).settings
+            host = f5.address(st.get("host", ""), st.get("port"))
         try:
             fetched, error = await run_in_threadpool(sources.fetch_certificate, host), None
         except Exception as e:
@@ -359,6 +471,47 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
             s.commit()
             return RedirectResponse(f"/sources/{sid}?msg=trusted", 303)
 
+    @app.post("/sources/{sid}/ssh/fetch-key", response_class=HTMLResponse)
+    async def ssh_fetch_key(sid: int, request: Request):
+        await checked_form(request)
+        return await fetch_key_page(request, sid)
+
+    async def fetch_key_page(request: Request, sid: int) -> HTMLResponse:
+        with session() as s:
+            st = get_source(s, sid).settings
+        try:
+            fetched, error = await run_in_threadpool(sources.fetch_host_key, st.get("host", ""), st.get("port", 22)), None
+        except Exception as e:
+            fetched, error = None, sources.explain(e)
+        with session() as s:
+            return source_page(request, s, get_source(s, sid), fetched_key=fetched, errors=[error] if error else None)
+
+    @app.post("/sources/{sid}/ssh/trust-key")
+    async def ssh_trust_key(sid: int, request: Request):
+        f = await checked_form(request)
+        kind, key = f.get("key_type", ""), f.get("key", "")
+        try:
+            fp = sources.ssh_fingerprint(base64.b64decode(key, validate=True))
+        except ValueError:
+            raise HTTPException(400, "Not a host key") from None
+        if fp != f.get("fingerprint") or not re.fullmatch(r"[\w@.-]+", kind):
+            raise HTTPException(400, "The host key does not match the fingerprint shown; fetch it again")
+        with session() as s:
+            sc = get_source(s, sid)
+            sc.settings = {**sc.settings, "host_key": f"{kind} {key}", "host_key_fingerprint": fp}
+            audit(s, request, "ssh host key trusted", sc.name, fingerprint=fp)
+            s.commit()
+            return RedirectResponse(f"/sources/{sid}?msg=key-trusted", 303)
+
+    @app.post("/jobs/run-all")
+    async def run_all(request: Request):
+        await checked_form(request)
+        with session() as s:
+            audit(s, request, "run started", "all")
+            for sc in s.query(SourceConfig).order_by(SourceConfig.name):
+                runner.submit(s, sc)
+            return RedirectResponse("/jobs", 303)
+
     @app.get("/jobs", response_class=HTMLResponse)
     def jobs_list(request: Request):
         with session() as s:
@@ -381,23 +534,42 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
     def settings_page(request: Request, s: Session, tab: str, status_code: int = 200, **ctx) -> HTMLResponse:
         return page(request, f"settings_{tab}.html", status_code, active="settings", tab=tab, **ctx)
 
+    def collection_page(request: Request, s: Session, status_code: int = 200, **ctx) -> HTMLResponse:
+        """Settings › Data collection: the default schedule, missed and failed runs, history and API discovery."""
+        default = ctx.pop("collection", None) or sources.collection(s)
+        runs, t = [], auth._now()
+        while sources.valid_schedule(default, ("daily", "weekly")) and len(runs) < 3 and (t := sources.next_run(default, t)):
+            runs.append(t)
+        return settings_page(request, s, "collection", status_code, collection=default, runs=runs, days=sources.DAYS,
+                             zones=sources.ZONES, conns=[r for r in connections(s) if r["sc"]],
+                             general=ctx.pop("general", None) or {**jobs.GENERAL, **get_setting(s, "general")}, **ctx)
+
     @app.get("/settings", response_class=HTMLResponse)
-    def settings_general(request: Request, msg: str = ""):
+    def settings_collection(request: Request, msg: str = ""):
         with session() as s:
-            return settings_page(request, s, "general", general={**jobs.GENERAL, **get_setting(s, "general")}, msg=MESSAGES.get(msg))
+            return collection_page(request, s, msg=MESSAGES.get(msg))
 
     @app.post("/settings", response_class=HTMLResponse)
-    async def settings_general_save(request: Request):
+    async def settings_collection_save(request: Request):
         f = await checked_form(request)
         with session() as s:
             values = {k: f.get(k, "").strip() for k in jobs.GENERAL}
-            if not all(v.isdigit() and int(v) > 0 for v in values.values()):
-                return settings_page(request, s, "general", 422, general=values, errors=["Every value must be a whole number above 0"])
-            before = get_setting(s, "general")
+            default = {**sources.schedule_form(f), "catch_up": "catch_up" in f, "retry": "retry" in f}
+            errors = [] if all(v.isdigit() and int(v) > 0 for v in values.values()) else ["Every number must be a whole number above 0"]
+            if not sources.valid_schedule(default, ("daily", "weekly")):
+                errors.append("Choose daily or weekly, a day, a time and a time zone")
+            if errors:
+                return collection_page(request, s, 422, general=values, collection=default, errors=errors)
+            before = {**get_setting(s, "general"), **sources.collection(s)}
             put_setting(s, "general", {k: int(v) for k, v in values.items()})
-            audit(s, request, "settings changed", "general", changed=sorted(k for k in values if before.get(k) != int(values[k])))
+            put_setting(s, "collection", default)
+            for sc in s.query(SourceConfig):
+                if (sc.settings.get("schedule") or {}).get("every") == "default":
+                    sources.reschedule(sc, default)
+            after = {**{k: int(v) for k, v in values.items()}, **default}
+            audit(s, request, "settings changed", "data collection", changed=sorted(k for k in after if before.get(k) != after[k]))
             s.commit()
-            return RedirectResponse("/settings?msg=general", 303)
+            return RedirectResponse("/settings?msg=collection", 303)
 
     def cert_info(path: Path) -> dict:
         c = x509.load_pem_x509_certificate(path.read_bytes())
@@ -530,8 +702,10 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
     @app.get("/", response_class=HTMLResponse)
     def overview(request: Request):
         with session() as s:
+            conns = connections(s)
             return page(request, "overview.html", problems=sources.problems(s, tls_cert()), active="", summary=report.summary(s),
-                        top=report.table(s, "findings")[:10], sources=report.table(s, "sources"))
+                        top=report.table(s, "findings")[:5], conns=conns,
+                        last=max((r["inv"].last_run for r in conns if r["inv"] and r["inv"].last_run), default=None))
 
     @app.get("/t/{name}", response_class=HTMLResponse)
     def table_page(name: str, request: Request):

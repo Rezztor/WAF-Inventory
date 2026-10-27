@@ -12,8 +12,12 @@ import httpx
 
 from .models import Gateway, Listener, Route, WafPolicy
 
-ARM = "https://management.azure.com"
-LOGS = "https://api.loganalytics.io"
+CLOUDS = {  # sign-in host, Resource Manager and Log Analytics per Azure cloud
+    "public": {"login": "login.microsoftonline.com", "arm": "https://management.azure.com", "logs": "https://api.loganalytics.io"},
+    "usgov": {"login": "login.microsoftonline.us", "arm": "https://management.usgovcloudapi.net", "logs": "https://api.loganalytics.us"},
+    "china": {"login": "login.chinacloudapi.cn", "arm": "https://management.chinacloudapi.cn", "logs": "https://api.loganalytics.azure.cn"},
+}
+ARM, LOGS = CLOUDS["public"]["arm"], CLOUDS["public"]["logs"]
 API = {
     "subscriptions": "2022-12-01",
     "network": "2024-05-01",  # applicationGateways + ApplicationGatewayWebApplicationFirewallPolicies
@@ -28,9 +32,10 @@ MODE = {"prevention": "block", "detection": "detect"}
 class Arm:
     """Minimal ARM/Log Analytics REST client: bearer token, nextLink paging, 429 backoff."""
 
-    def __init__(self, credential, http: httpx.Client | None = None):
+    def __init__(self, credential, http: httpx.Client | None = None, cloud: str = "public"):
         self.cred = credential
         self.http = http or httpx.Client(timeout=120)
+        self.arm, self.logs = CLOUDS[cloud]["arm"], CLOUDS[cloud]["logs"]
 
     def _send(self, method: str, url: str, scope: str, **kw) -> dict:
         for attempt in range(6):
@@ -45,14 +50,14 @@ class Arm:
         return r.json()
 
     def list(self, path: str, api: str) -> Iterator[dict]:
-        url = f"{ARM}{path}?api-version={api}"
+        url = f"{self.arm}{path}?api-version={api}"
         while url:
-            body = self._send("GET", url, ARM)
+            body = self._send("GET", url, self.arm)
             yield from body.get("value", [])
             url = body.get("nextLink")
 
     def query_logs(self, workspace: str, kql: str, days: int) -> list[dict]:
-        body = self._send("POST", f"{LOGS}/v1/workspaces/{workspace}/query", LOGS,
+        body = self._send("POST", f"{self.logs}/v1/workspaces/{workspace}/query", self.logs,
                           json={"query": kql, "timespan": f"P{days}D"})
         rows = []
         for t in body.get("tables", []):

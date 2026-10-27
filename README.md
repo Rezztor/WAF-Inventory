@@ -59,11 +59,11 @@ docker compose restart
 
 ## Connecting real environments
 
-**In the console** (the way to do it in the container): Sources › Add. Every type below has a form, a Test connection button that names the missing permission or wrong setting, and Run now with a live job log.
-- **Azure:** the console makes the sign-in certificate. Download the `.cer`, upload it to the app registration, then test. A client secret also works.
-- **F5 BIG-IP:** Fetch certificate shows the device's certificate. Compare its SHA-256 fingerprint on the BIG-IP and trust it; from then on, only that certificate is accepted.
+**In the console** (the way to do it in the container): Settings › Connections › Add. Every type below has a form, a Test connection button that names the missing permission or wrong setting, and Run now with a live job log.
+- **Azure:** the console makes the sign-in certificate. Download the `.cer`, upload it to the app registration, then test. A client secret also works, and so does a managed identity when the console runs in Azure. Azure Government and Azure China are a choice on the form.
+- **F5 BIG-IP:** three ways in. REST API (recommended): a read-only Auditor account, optional port, token sign-in and a partition filter; Fetch certificate shows the device's certificate, compare its SHA-256 fingerprint on the BIG-IP and trust it, and from then on only that certificate is accepted. SSH (where REST is blocked): read-only `tmsh list` commands with a key or password, and the host key is pinned the same way. Offline files (no network): upload a UCS, `bigip.conf` or ASM policy exports, or point at a folder on the server.
 - **Credentials** are encrypted in the database with the master key (`/run/secrets/master_key`, or the file named by `WAF_INV_MASTER_KEY_FILE`). They are never shown again; leave a field blank to keep the saved value.
-- **Schedules:** each source can collect hourly, daily or weekly (times in UTC). Overview and Sources warn about failed runs and about certificates or client secrets expiring within 30 days.
+- **Schedules:** Settings › Data collection sets the default (daily or weekly, at a time in a chosen time zone, with catch-up after downtime and one retry 15 minutes after a failure). Each connection uses the default, its own schedule, or manual only. Overview and Sources warn about failed runs and about certificates or client secrets expiring within 30 days.
 - **Rotating the Azure certificate:** "Rotate" makes a second certificate while the first keeps working. Upload the new `.cer`, then "Test the new certificate"; once that passes, the new one replaces the old one.
 - **Picking scope:** after a successful Azure test, the subscriptions and Log Analytics workspaces the app can see appear as tick boxes.
 - **`config.toml`:** sources found there at first start are imported once, with F5 passwords read from their environment variables. From then on, `waf-inv collect` and the console both use the sources stored in the console, and every run appears under Jobs. Settings › Import and export copies sources between sites as TOML, without secrets.

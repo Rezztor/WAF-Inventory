@@ -108,9 +108,10 @@ def test_audit_log_records_actions_without_secrets(console):
 
 def test_general_settings_feed_the_next_run(console):
     c = console
+    when = {"schedule_every": "weekly", "schedule_day": "6", "schedule_at": "02:00", "schedule_tz": "UTC", "retry": "on"}
     assert c.post("/settings", data={"csrf": csrf(c, "/settings"), "collapse_threshold": "x", "min_hits": "5",
-                                     "job_retention_days": "90"}).status_code == 422
-    c.post("/settings", data={"csrf": csrf(c, "/settings"), "collapse_threshold": "4", "min_hits": "2", "job_retention_days": "30"})
+                                     "job_retention_days": "90", **when}).status_code == 422
+    c.post("/settings", data={"csrf": csrf(c, "/settings"), "collapse_threshold": "4", "min_hits": "2", "job_retention_days": "30", **when})
     with connect(c.db) as s:
         assert get_setting(s, "general") == {"collapse_threshold": 4, "min_hits": 2, "job_retention_days": 30}
         assert jobs.effective_cfg(s, {"_dir": c.dir, "discovery": {"min_hits": 9, "overrides": {"a": []}}})["discovery"] == \
@@ -151,7 +152,7 @@ def test_toml_export_and_import(console, tmp_path, monkeypatch):
     assert "Not imported" in other.post("/settings/import", data={"csrf": csrf(other, "/settings/transfer"), "toml": "[[x"}).text
     with connect(db) as s:
         bigip = s.query(SourceConfig).filter_by(name="bigip").one()
-        assert bigip.settings["schedule"] == {"every": "weekly", "at": "03:30", "day": 6} and bigip.settings["next_run"]
+        assert bigip.settings["schedule"] == {"every": "weekly", "at": "03:30", "day": 6, "tz": "UTC"} and bigip.settings["next_run"]
         assert s.query(SourceConfig).filter_by(name="az").one().settings["subscriptions"] == ["s1", "s2"]
 
 

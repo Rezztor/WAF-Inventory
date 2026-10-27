@@ -1,4 +1,4 @@
-"""F5 BIG-IP (LTM + ASM / Advanced WAF): live iControl REST or offline bigip.conf + ASM policy JSON exports.
+"""F5 BIG-IP (LTM + ASM / Advanced WAF): live iControl REST, read-only tmsh over SSH, or offline bigip.conf + ASM policy JSON exports.
 
 Both paths produce the same intermediate `cfg` dict, which `build()` turns into the vendor-neutral model:
   device       {"hostname", "version"}
@@ -16,6 +16,7 @@ import json
 import re
 import ssl
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import httpx
@@ -28,9 +29,14 @@ CHUNK = 1024 * 1024  # ASM file-transfer downloads are capped at 1 MB per reques
 
 # ---------------------------------------------------------------- live: iControl REST
 
+def address(host: str, port: int | None) -> str:
+    """host[:port] for the management interface; a port already written in the host wins."""
+    return host if not port or port == 443 or re.search(r":\d+$", host) else f"{host}:{port}"
+
+
 class F5Client:
     def __init__(self, host: str, username: str, password: str, ca_cert: str | None = None,
-                 http: httpx.Client | None = None, timeout: float = 120):
+                 http: httpx.Client | None = None, timeout: float = 120, token: bool = True):
         if http is None:
             verify: ssl.SSLContext | bool = True
             if ca_cert:  # pin the device's own (usually self-signed) management certificate: a PEM file path or PEM text
@@ -40,9 +46,12 @@ class F5Client:
                 verify.verify_flags |= ssl.VERIFY_X509_PARTIAL_CHAIN  # the pinned certificate is the trust anchor
                 verify.verify_flags &= ~ssl.VERIFY_X509_STRICT  # BIG-IP default certificates predate the strict profile
             http = httpx.Client(base_url=f"https://{host}", verify=verify, timeout=timeout)
-        self.http, self.username, self.password, self.token = http, username, password, None
+        self.http, self.username, self.password, self.token, self.use_token = http, username, password, None, token
 
     def login(self) -> None:
+        if not self.use_token:  # basic auth on every call, for devices where token sign-in is turned off
+            self.http.auth = (self.username, self.password)
+            return
         r = self.http.post("/mgmt/shared/authn/login",
                            json={"username": self.username, "password": self.password, "loginProviderName": "tmos"})
         r.raise_for_status()
@@ -254,11 +263,53 @@ def load_offline(path: str | Path) -> dict:
         raise FileNotFoundError(2, "No such file or directory", str(path))
     files = [path] if path.is_file() else sorted(path.rglob("*"))
     text = "\n".join(f.read_text(errors="replace") for f in files if f.suffix in (".conf", ".txt"))
+    return from_conf(text, path.stem, [json.loads(f.read_text()) for f in files if f.suffix == ".json"])
+
+
+SSH_LISTS = ("sys global-settings", "ltm virtual", "ltm pool", "ltm policy", "ltm rule", "ltm profile client-ssl", "ltm profile http")
+
+
+def ssh_version(run: Callable[[str], tuple[int, str]]) -> tuple[str, str | None]:
+    """How to call tmsh for this account ("tmsh -q -c" from bash, or bare when tmsh is the login shell) and the version."""
+    for prefix in ("tmsh -q -c ", ""):
+        status, out = run(prefix + '"show sys version"' if prefix else "show sys version")
+        if status == 0 and (m := re.search(r"(?m)^\s*Version\s+(\S+)", out)):
+            build = re.search(r"(?m)^\s*Build\s+(\S+)", out)
+            return prefix, f"{m.group(1)} {build.group(1)}" if build else m.group(1)
+    raise ValueError("tmsh did not answer 'show sys version'. Give the account the Auditor role and tmsh or bash terminal access")
+
+
+def fetch_ssh(run: Callable[[str], tuple[int, str]]) -> tuple[dict, list[str]]:
+    """Read the device with read-only tmsh list commands over SSH; tmsh prints the same syntax as bigip.conf."""
+    prefix, version = ssh_version(run)
+    texts, warnings = [], []
+    for what in (*SSH_LISTS, "asm policy"):
+        cmd = f"cd /; list {what} recursive" if what != "sys global-settings" else f"list {what}"
+        status, out = run(f'{prefix}"{cmd}"' if prefix else cmd)
+        if status:  # e.g. ASM not provisioned
+            warnings.append(f"tmsh list {what}: {out.strip().splitlines()[0] if out.strip() else f'exit {status}'}")
+            continue
+        texts.append(out)
+    cfg = from_conf("\n".join(texts), "bigip", [])
+    cfg["device"]["version"] = version
+    return cfg, warnings
+
+
+def only_partitions(cfg: dict, partitions: list[str]) -> dict:
+    """Keep the objects in these partitions (all when empty)."""
+    if not partitions:
+        return cfg
+    keep = tuple(f"/{p.strip('/')}/" for p in partitions)
+    return {**cfg, "virtuals": [v for v in cfg["virtuals"] if v["name"].startswith(keep)],
+            **{k: {n: v for n, v in cfg[k].items() if n.startswith(keep)} for k in ("pools", "ltm_policies", "asm")}}
+
+
+def from_conf(text: str, fallback_name: str, exports: list[dict]) -> dict:
     parsed = parse_conf(text)
     o = parsed["objs"]
     gs = o.get("sys global-settings", {}).get("", {})
     cfg = {
-        "device": {"hostname": gs.get("hostname") or path.stem, "version": parsed["version"]},
+        "device": {"hostname": gs.get("hostname") or fallback_name, "version": parsed["version"]},
         "virtuals": [], "pools": {}, "ltm_policies": {}, "irules": parsed["irules"], "asm": {},
         "client_ssl": {n: {"server_name": d.get("server-name")} for n, d in o.get("ltm profile client-ssl", {}).items()},
         "http_profiles": list(o.get("ltm profile http", {})),
@@ -282,14 +333,13 @@ def load_offline(path: str | Path) -> dict:
         cfg["ltm_policies"][name] = sorted(rules, key=lambda r: r["ordinal"])  # first-match order
     for name, d in o.get("asm policy", {}).items():
         cfg["asm"][name] = {"mode": "blocking" if d.get("blocking-mode") == "enabled" else "transparent",
-                            "active": bool(d.get("active")), "virtual_servers": [], "export": None}
-    for f in files:
-        if f.suffix == ".json":
-            exp = json.loads(f.read_text())
-            pol = exp.get("policy", {})
-            full = pol.get("fullPath") or f"/Common/{pol.get('name')}"
-            info = cfg["asm"].setdefault(full, {"mode": pol.get("enforcementMode"), "active": True, "virtual_servers": []})
-            info["export"] = exp
+                            "active": bool(d.get("active")), "export": None,
+                            "virtual_servers": [_full(v) for v in _words(d.get("virtual-servers"))]}
+    for exp in exports:
+        pol = exp.get("policy", {})
+        full = pol.get("fullPath") or f"/Common/{pol.get('name')}"
+        info = cfg["asm"].setdefault(full, {"mode": pol.get("enforcementMode"), "active": True, "virtual_servers": []})
+        info["export"] = exp
     return cfg
 
 

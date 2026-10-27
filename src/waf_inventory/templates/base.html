@@ -4,12 +4,38 @@
 {% if refresh %}<meta http-equiv="refresh" content="2">{% endif %}
 {% include "_style.html" %}
 </head><body>
-<header class="top"><b>WAF Inventory</b>
-{% if user %}<nav aria-label="Main"><a href="/" class="{{ 'on' if not active }}">Overview</a>
-{% for key, (title, _) in pages.items() if key != "sources" %}<a href="/t/{{ key }}" class="{{ 'on' if active == key }}">{{ title }}</a>{% endfor %}
-<span class="sep" aria-hidden="true"></span><a href="/sources" class="{{ 'on' if active == 'console_sources' }}">Sources</a><a href="/jobs" class="{{ 'on' if active == 'jobs' }}">Jobs</a><a href="/settings" class="{{ 'on' if active == 'settings' }}">Settings</a>
+{% if user %}
+{% macro item(href, key, label, icon) %}<a href="{{ href }}" class="{{ 'on' if active == key }}" {{ 'aria-current=page' if active == key }}><svg viewBox="0 0 16 16" aria-hidden="true">{{ icon | safe }}</svg><span>{{ label }}</span>{{ caller() if caller }}</a>{% endmacro %}
+<div class="shell">
+<aside class="rail">
+<div class="brand"><div class="logo" aria-hidden="true">W</div><div style="line-height:1.25"><div style="font-weight:700;font-size:14px">WAF Inventory</div><div class="hint">Rezztor</div></div></div>
+<nav aria-label="Main">
+<div class="grp">Monitor</div>
+{{ item("/", "", "Overview", '<rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/>') }}
+{% call item("/t/findings", "findings", "Findings", '<path d="M8 2l6.5 11.5h-13z"/><path d="M8 6.5v3M8 11.5v.01"/>') %}{% if nav.high %}<span class="count" aria-label="{{ nav.high }} high">{{ nav.high }}</span>{% endif %}{% endcall %}
+{{ item("/jobs", "jobs", "Jobs", '<circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/>') }}
+<div class="grp">Inventory</div>
+{{ item("/t/applications", "applications", "Applications", '<rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M2 6h12"/>') }}
+{{ item("/t/routes", "routes", "Routes", '<path d="M3 13V9a3 3 0 0 1 3-3h7M10 3l3 3-3 3"/>') }}
+{{ item("/t/policies", "policies", "WAF policies", '<path d="M8 2l5 2v4c0 3-2.2 5-5 6-2.8-1-5-3-5-6V4z"/>') }}
+{{ item("/t/policy_settings", "policy_settings", "Policy settings", '<path d="M3 4h10M3 8h10M3 12h10"/>') }}
+{{ item("/t/endpoints", "endpoints", "API endpoints", '<path d="M6 3C4 3 4 4 4 5.5S3 8 2 8c1 0 2 .5 2 2.5S4 13 6 13M10 3c2 0 2 1 2 2.5S13 8 14 8c-1 0-2 .5-2 2.5S12 13 10 13"/>') }}
+<div class="grp">Admin</div>
+{{ item("/sources", "settings", "Settings", '<circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6L5 5M11 11l1.4 1.4M3.6 12.4L5 11M11 5l1.4-1.4"/>') }}
 </nav>
-<form class="who" method="post" action="/logout"><span class="muted">{{ user }}</span><input type="hidden" name="csrf" value="{{ csrf }}"><button>Sign out</button></form>{% endif %}
+<div class="status" role="status"><b><span class="dot" aria-hidden="true"></span>{{ "Collecting now" if nav.running else "Collector running" }}</b>
+<div>{{ "Next run " ~ nav.next[:16] | replace("T", " ") ~ " UTC" if nav.next else "Nothing scheduled" }}</div><div>Version {{ nav.version }}</div></div>
+</aside>
+<div class="main">
+<header class="top">
+<div style="min-width:0">{% block crumb %}{% endblock %}<h1>{% block heading %}{% endblock %}</h1>{% block sub %}{% endblock %}</div>
+<span class="grow"></span>
+{% block actions %}{% endblock %}
+<form class="who" method="post" action="/logout"><span class="avatar" aria-hidden="true">{{ user[:2] }}</span><span>{{ user }}<small>Administrator</small></span>
+<input type="hidden" name="csrf" value="{{ csrf }}"><button>Sign out</button></form>
 </header>
-<main>{% block body %}{% endblock %}</main>
+<main class="content {% block width %}{% endblock %}">{% block body %}{% endblock %}</main>
+</div>
+</div>
+{% else %}<main>{% block public %}{% endblock %}</main>{% endif %}
 </body></html>

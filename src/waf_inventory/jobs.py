@@ -99,22 +99,34 @@ class Runner:
                 job.status, job.summary = "error", sources.explain(e, sc)
                 log(f"Failed: {job.summary}")
                 if sc is not None:
+                    retry = job.trigger == "schedule" and sources.collection(s)["retry"]
                     src = source(s, sc.name, sc.type)
                     src.status, src.error, src.last_run = "error", job.summary, now()
+                    if retry:
+                        sc.settings = {**sc.settings, "retry_at": (_now() + sources.RETRY).isoformat()}
                     s.commit()
+                    if retry:
+                        log(f"Will try again at {_now() + sources.RETRY:%H:%M} UTC")
             job.finished = _now()
             js.commit()
             return job
 
 
+MISSED = timedelta(minutes=5)  # a due time older than this was missed while the server was off
+
+
 def tick(s: Session, runner: Runner, at: datetime) -> list[str]:
-    """Queue every source whose scheduled time has come; drop job history past its retention. Returns names queued."""
-    queued = []
+    """Queue every source whose scheduled time (or retry) has come; drop job history past its retention. Returns names queued."""
+    queued, default = [], sources.collection(s)
     for sc in s.query(SourceConfig):
-        sched, nxt = sc.settings.get("schedule"), sc.settings.get("next_run")
+        if (retry := sc.settings.get("retry_at")) and datetime.fromisoformat(retry) <= at:
+            sc.settings = {k: v for k, v in sc.settings.items() if k != "retry_at"}
+            runner.submit(s, sc, trigger="retry")
+            queued.append(sc.name)
+        sched, nxt = sources.effective(sc.settings.get("schedule"), default), sc.settings.get("next_run")
         if not sched or sched.get("every", "off") == "off":
             continue
-        if nxt and datetime.fromisoformat(nxt) <= at:
+        if nxt and datetime.fromisoformat(nxt) <= at and (default["catch_up"] or datetime.fromisoformat(nxt) > at - MISSED):
             runner.submit(s, sc, trigger="schedule")
             queued.append(sc.name)
         if not nxt or datetime.fromisoformat(nxt) <= at:

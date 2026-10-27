@@ -1,24 +1,53 @@
-{% extends "base.html" %}{% from "_macros.html" import grid %}
+{% extends "base.html" %}{% from "_macros.html" import badge %}
+{% block heading %}Overview{% endblock %}
+{% block sub %}<div class="sub">{{ "Last collection " ~ last.strftime("%d %b %Y, %H:%M") ~ " UTC" if last else "Nothing collected yet" }}</div>{% endblock %}
+{% block actions %}<form method="post" action="/jobs/run-all"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Run all now</button></form>{% endblock %}
 {% block body %}
-<h1>Overview</h1>
-{% include "_problems.html" %}
-<div class="cards">
-  <a class="card" href="/t/applications" style="text-decoration:none;color:inherit"><div class="n">{{ summary.applications }}</div><div class="l">applications</div></a>
-  <div class="card"><div class="n">{{ summary.coverage }}%</div><div class="l">web listeners in blocking mode</div></div>
-  <a class="card" href="/t/policies" style="text-decoration:none;color:inherit"><div class="n">{{ summary.policies }}</div><div class="l">WAF policies · {{ summary.gateways }} gateways</div></a>
-  <a class="card" href="/t/endpoints?kind=api" style="text-decoration:none;color:inherit"><div class="n">{{ summary.api_endpoints }}</div><div class="l">API endpoints ({{ summary.endpoints }} total)</div></a>
-  <a class="card" href="/t/findings?severity=high" style="text-decoration:none;color:inherit"><div class="n">{{ summary.findings.high }}</div><div class="l">high findings · {{ summary.findings.medium }} medium · {{ summary.findings.low }} low</div></a>
+{% if problems %}<h2>{{ problems | length }} thing{{ "s need" if problems | length > 1 else " needs" }} attention</h2>
+<section aria-label="Needs attention" class="grid" style="--min:320px;--gap:12px">
+{% for text, link in problems %}{% set bad = "failed" in text or "expired on" in text %}
+<div class="attn {{ 'crit' if bad else 'warn' }}"><svg viewBox="0 0 16 16" aria-hidden="true">{% if bad %}<path d="M8 2l6.5 11.5h-13z"/><path d="M8 6.5v3M8 11.5v.01"/>{% else %}<circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/>{% endif %}</svg>
+<div class="cell" style="flex:1;color:var(--ink)">{{ text }}</div>
+<a class="btn" href="{{ link }}">Fix it</a></div>{% endfor %}
+</section>{% endif %}
+
+<section aria-label="Totals" class="grid" style="--min:200px;--gap:12px">
+<a class="card kpi" href="/t/applications"><span class="l">Applications</span><span class="n">{{ summary.applications }}</span><span class="d">across Azure and F5</span></a>
+<div class="card kpi"><span class="l">Blocking mode</span><span class="n">{{ summary.coverage }}%</span><span class="d">of web listeners</span></div>
+<a class="card kpi" href="/t/policies"><span class="l">WAF policies</span><span class="n">{{ summary.policies }}</span><span class="d">on {{ summary.gateways }} gateways</span></a>
+<a class="card kpi" href="/t/endpoints?kind=api"><span class="l">API endpoints</span><span class="n">{{ summary.api_endpoints }}</span><span class="d">of {{ summary.endpoints }} seen</span></a>
+</section>
+
+<section class="grid" style="--min:380px;--gap:12px">
+{% set m = summary.modes %}{% set total = (m.block + m.detect + m.off + m.unknown + m.none) or 1 %}
+<div class="card pad"><h2>WAF mode of web listeners</h2>
+<div class="bar" role="img" aria-label="{{ m.block }} block, {{ m.detect }} detect, {{ m.off }} off, {{ m.none }} with no WAF, {{ m.unknown }} unknown">
+{% for key, color in (("block", "ok"), ("detect", "warn"), ("off", "line-2"), ("unknown", "ink-3"), ("none", "crit")) if m[key] %}<i style="width:{{ 100 * m[key] / total }}%;background:var(--{{ color }})"></i>{% endfor %}</div>
+<div class="legend">{% for key, color, label in (("block", "ok", "block"), ("detect", "warn", "detect only"), ("off", "line-2", "off"), ("unknown", "ink-3", "unknown"), ("none", "crit", "no WAF")) if m[key] or key in ("block", "detect", "none") %}
+<a href="/t/applications?mode={{ key }}" style="color:inherit;text-decoration:none"><span><i style="background:var(--{{ color }})"></i><b>{{ m[key] }}</b> {{ label }}</span></a>{% endfor %}</div>
 </div>
+<div class="card pad"><h2>Findings</h2>
+<div class="sev"><a href="/t/findings?severity=high" class="crit"><b>{{ summary.findings.high }}</b><span>High</span></a>
+<a href="/t/findings?severity=medium" class="warn"><b>{{ summary.findings.medium }}</b><span>Medium</span></a>
+<a href="/t/findings?severity=low" class="neu"><b style="color:var(--ink)">{{ summary.findings.low }}</b><span>Low</span></a></div>
+</div>
+</section>
 
-<h2>WAF mode of web listeners</h2>
-<div class="cards">{% for m, n in summary.modes.items() %}<a class="card" href="/t/applications?mode={{ m }}" style="text-decoration:none;color:inherit"><div class="n">{{ n }}</div><div class="l"><span class="b {{ m }}">{{ m }}</span></div></a>{% endfor %}</div>
+<section class="card" style="overflow:hidden">
+<div class="head"><h2>Top findings</h2><span class="grow"></span><a href="/t/findings" style="font-weight:600">All {{ summary.findings.high + summary.findings.medium + summary.findings.low }} findings</a></div>
+{% if top %}<div class="tw flush"><table><thead><tr><th>Severity</th><th>Finding</th><th>Subject</th></tr></thead>
+<tbody>{% for f in top %}<tr><td>{{ badge(f.severity) }}</td><td>{{ f.title }}</td><td class="mono">{{ f.subject }}</td></tr>{% endfor %}</tbody></table></div>
+{% else %}<p class="muted" style="padding:0 16px">No findings.</p>{% endif %}
+</section>
 
-<h2>Top findings</h2>
-{{ grid("findings", top) }}
+<section class="card" style="overflow:hidden">
+<div class="head"><h2>Connections</h2><span class="grow"></span><a href="/sources" style="font-weight:600">Manage connections</a></div>
+<div class="list">{% for r in conns %}
+<div class="item"><b style="flex:1 1 220px;overflow-wrap:anywhere">{% if r.sc %}<a href="/sources/{{ r.sc.id }}" style="color:inherit">{{ r.name }}</a>{% else %}{{ r.name }}{% endif %}</b>
+<span style="flex:1 1 160px;color:var(--ink-2)">{{ r.title }}</span><span style="flex:0 1 170px" class="muted">{{ r.inv.last_run.strftime("%d %b, %H:%M") if r.inv and r.inv.last_run else "never run" }}</span>
+<span class="pill {{ r.tone }}">{{ r.status }}</span></div>
+{% else %}<div class="item muted">No connections yet. <a href="/sources">Add one</a>.</div>{% endfor %}</div>
+</section>
 
-<h2>Sources</h2>
-{{ grid("sources", sources) }}
-
-<h2>Export</h2>
-<div class="ex"><a href="/export/report.html">Full HTML report</a> · <a href="/export/inventory.xlsx">Excel (all sheets)</a> · each list page also exports CSV / JSON / Excel</div>
+<div class="ex">Export: <a href="/export/report.html">Full HTML report</a> · <a href="/export/inventory.xlsx">Excel (all sheets)</a> · each list page also exports CSV, JSON and Excel</div>
 {% endblock %}

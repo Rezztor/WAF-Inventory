@@ -1,18 +1,23 @@
 """Sources managed in the console: their fields, credentials from the vault, connection tests and errors in plain words."""
 from __future__ import annotations
 
+import base64
 import glob
+import hashlib
 import json
 import os
 import re
 import ssl
+import tarfile
 from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import NamedTuple
 from urllib.parse import urlsplit
+from zoneinfo import ZoneInfo, available_timezones
 
 import httpx
+import paramiko
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -32,38 +37,60 @@ class Field(NamedTuple):
     choices: tuple[tuple[str, str], ...] = ()
 
 
-AZURE_AUTH = (("certificate", "Certificate made by this app (recommended)"), ("secret", "Client secret"),
-              ("default", "This machine's Azure login (az login or environment variables)"))
+AZURE_AUTH = (("certificate", "Certificate"), ("secret", "Client secret"), ("managed_identity", "Managed identity"),
+              ("default", "This machine's Azure login"))
+AZURE_CLOUDS = (("public", "Azure (global)"), ("usgov", "Azure Government"), ("china", "Azure China"))
+SSH_AUTH = (("key", "Private key"), ("password", "Password"))
 TYPES: dict[str, tuple[str, list[Field]]] = {
-    "azure": ("Azure Application Gateway and Front Door", [
-        Field("tenant_id", "Tenant ID", "text", "Directory (tenant) ID of the app registration", True),
-        Field("client_id", "Client ID", "text", "Application (client) ID of the app registration", True),
+    "azure": ("Azure WAF", [
+        Field("cloud", "Azure cloud", "choice", "", True, AZURE_CLOUDS),
+        Field("tenant_id", "Tenant ID", "text", "Entra ID › Overview › Tenant ID"),
+        Field("client_id", "Client ID", "text", "App registrations › your app › Application (client) ID"),
         Field("auth", "Sign in with", "choice", "", True, AZURE_AUTH),
-        Field("client_secret", "Client secret", "secret", "Only for client secret sign-in: the secret's Value, not its ID"),
-        Field("client_secret_expires", "Client secret expires on", "date", "From the app registration, for a warning 30 days before"),
+        Field("client_secret", "Client secret", "secret", "The Value column, not the Secret ID. Stored encrypted."),
+        Field("client_secret_expires", "Client secret expires on", "date", "Warns 30 days before the secret expires."),
+        Field("mi_client_id", "User-assigned identity client ID (optional)", "text", "Empty: the system-assigned identity"),
         Field("subscriptions", "Subscriptions", "list", "One subscription ID per line. Empty: every subscription the app can read"),
         Field("log_workspaces", "Log Analytics workspaces", "list",
               "Workspace IDs (GUIDs) receiving App Gateway / Front Door access logs, one per line. Empty: configuration only"),
         Field("log_days", "Days of access logs", "int", "", True),
     ]),
-    "f5_rest": ("F5 BIG-IP (iControl REST)", [
-        Field("host", "Management address", "text", "IP address or hostname, with :port if not 443", True),
-        Field("username", "Username", "text", "A read-only account with the Auditor role", True),
-        Field("password", "Password", "secret", "", True),
-        Field("export", "Read ASM policies with the declarative export (TMOS 15.1+)", "bool"),
+    "f5_rest": ("F5 BIG-IP · REST API", [
+        Field("host", "Management address", "text", "IP address or hostname", True),
+        Field("port", "Port", "int", "", True),
+        Field("username", "Username", "text", "A local or remote user with the Auditor role on all partitions.", True),
+        Field("password", "Password", "secret", "Stored encrypted on this server.", True),
+        Field("token", "Sign in with a token", "bool", "Sends the password once for a token, then uses the token for every call."),
+        Field("export", "Read ASM policies with the declarative export", "bool", "TMOS 15.1 or later. Gives the full policy, not only its summary."),
+        Field("partitions", "Partitions", "list", "Empty: all partitions. Or e.g. Common, DMZ"),
     ]),
-    "f5_offline": ("F5 BIG-IP (offline files)", [
-        Field("path", "Folder on the server", "text", "Holds bigip.conf and ASM policy JSON exports", True)]),
+    "f5_ssh": ("F5 BIG-IP · SSH", [
+        Field("host", "Host", "text", "IP address or hostname", True),
+        Field("port", "Port", "int", "", True),
+        Field("username", "Username", "text", "Auditor role, with terminal access set to tmsh.", True),
+        Field("ssh_auth", "Sign in with", "choice", "", True, SSH_AUTH),
+        Field("ssh_key", "Private key", "secret", "Ed25519 recommended. Stored encrypted. Add the public key to the user on the BIG-IP."),
+        Field("ssh_passphrase", "Key passphrase (optional)", "secret"),
+        Field("password", "Password", "secret", "Stored encrypted on this server."),
+        Field("partitions", "Partitions", "list", "Empty: all partitions. Or e.g. Common, DMZ"),
+    ]),
+    "f5_offline": ("F5 BIG-IP · Offline files", [
+        Field("path", "Or a folder on the server", "text", "Holds bigip.conf and ASM policy exports. Read again on every run.")]),
     "azure_bundle": ("Azure (offline bundle file)", [
         Field("path", "Bundle file on the server", "text", "JSON saved with waf-inv collect --save-raw", True)]),
     "logs": ("Access logs (files)", [
         Field("path", "Files on the server", "text", "A glob of JSONL or CSV files, e.g. logs/*.jsonl", True)]),
 }
-DEFAULTS = {"azure": {"auth": "certificate", "log_days": 30}, "f5_rest": {"export": True}}
-EVERY = (("off", "Manual (Run now)"), ("hourly", "Every hour"), ("daily", "Every day"), ("weekly", "Every week"))
+DEFAULTS = {"azure": {"cloud": "public", "auth": "certificate", "log_days": 30}, "f5_rest": {"port": 443, "token": True, "export": True},
+            "f5_ssh": {"port": 22, "ssh_auth": "key"}}
+EVERY = (("default", "Use the default"), ("off", "Manual only"), ("hourly", "Every hour"), ("daily", "Daily"), ("weekly", "Weekly"))
 DAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+ZONES = sorted(available_timezones())
+COLLECTION = {"every": "daily", "at": "02:00", "day": 6, "tz": "UTC", "catch_up": True, "retry": True}  # Settings › Data collection
+RETRY = timedelta(minutes=15)
 WARN_DAYS = 30
 PATH_TYPES = {"f5_offline", "azure_bundle", "logs"}
+UPLOADS = (".conf", ".txt", ".json", ".ucs")
 SECRETS = {f.key for _, fields in TYPES.values() for f in fields if f.kind == "secret"}
 KINDS = {"text": str, "choice": str, "date": str, "list": list, "int": int, "bool": bool}
 
@@ -76,9 +103,34 @@ def day(v) -> date | None:
         return None
 
 
-def valid_schedule(sched) -> bool:
-    return (isinstance(sched, dict) and sched.get("every") in dict(EVERY) and sched.get("day") in range(7)
+def valid_schedule(sched, every=tuple(dict(EVERY))) -> bool:
+    return (isinstance(sched, dict) and sched.get("every") in every and sched.get("day") in range(7)
+            and sched.get("tz", "UTC") in ZONES
             and isinstance(sched.get("at"), str) and re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", sched["at"]) is not None)
+
+
+def schedule_form(form: dict[str, str], prefix: str = "schedule_") -> dict:
+    d = form.get(prefix + "day", "0")
+    return {"every": form.get(prefix + "every", "off"), "at": form.get(prefix + "at", "02:00"), "day": int(d) if d.isdigit() else d,
+            "tz": form.get(prefix + "tz", "UTC")}
+
+
+def effective(schedule: dict | None, default: dict) -> dict | None:
+    """The schedule a source actually runs on: its own, or the default from Settings › Data collection."""
+    return default if (schedule or {}).get("every") == "default" else schedule
+
+
+def reschedule(sc: SourceConfig, default: dict, after: datetime | None = None) -> None:
+    nxt = next_run(effective(sc.settings.get("schedule"), default), after or datetime.now(timezone.utc).replace(tzinfo=None))
+    sc.settings = {**sc.settings, "next_run": nxt.isoformat() if nxt else None}
+
+
+def describe(schedule: dict | None, default: dict) -> str:
+    """'Weekly, Sunday at 02:00 (Asia/Dubai)' and the like."""
+    s = effective(schedule, default) or {"every": "off"}
+    every, at, tz = s.get("every", "off"), s.get("at", "02:00"), s.get("tz", "UTC")
+    return {"off": "Manual only", "hourly": "Every hour"}.get(every) or \
+        (f"Weekly, {DAYS[s.get('day', 0)]} at {at} ({tz})" if every == "weekly" else f"Daily at {at} ({tz})")
 
 
 def secret_state(sc: SourceConfig | None) -> dict[str, dict]:
@@ -86,10 +138,15 @@ def secret_state(sc: SourceConfig | None) -> dict[str, dict]:
     return {x.kind: {"updated": x.updated, "meta": x.meta} for x in (sc.secrets if sc else [])}
 
 
-def apply_form(sc: SourceConfig, form: dict[str, str]) -> list[str]:
+def apply_form(sc: SourceConfig, form: dict[str, str], default: dict = COLLECTION) -> list[str]:
     """Copy form values onto the source. Blank secret fields keep the stored value. Returns problems found."""
     errors, settings = [], dict(sc.settings or {})
+    st = settings  # azure.auth and f5_ssh.ssh_auth decide which fields are required
     for f in TYPES[sc.type][1]:
+        if f.key not in form and f.kind not in ("bool", "secret"):  # not on this form: keep what is stored
+            if f.required and settings.get(f.key) in (None, ""):
+                errors.append(f"{f.label} is required")
+            continue
         v = form.get(f.key, "").strip()
         if f.kind == "secret":
             if v:
@@ -113,38 +170,75 @@ def apply_form(sc: SourceConfig, form: dict[str, str]) -> list[str]:
             settings[f.key] = v
         if f.required and not v and f.kind != "bool":
             errors.append(f"{f.label} is required")
-    d = form.get("schedule_day", "0")
-    schedule = {"every": form.get("schedule_every", "off"), "at": form.get("schedule_at", "02:00"), "day": int(d) if d.isdigit() else d}
+    schedule = schedule_form(form)
+    mode = form.get("schedule_mode", "own")  # the form's three cards; a bare schedule_every means its own schedule
+    if mode in ("default", "off"):
+        schedule["every"] = mode
     if not valid_schedule(schedule):
         errors.append("Choose a valid schedule")
     elif schedule != settings.get("schedule"):
         settings["schedule"] = schedule
-        nxt = next_run(schedule, datetime.now(timezone.utc).replace(tzinfo=None))
-        settings["next_run"] = nxt.isoformat() if nxt else None
     sc.settings = settings
-    if sc.type == "azure" and settings.get("auth") == "secret" and not secret_state(sc).get("client_secret"):
+    if valid_schedule(schedule):
+        reschedule(sc, default)
+    have = secret_state(sc)
+    if sc.type == "azure" and st.get("auth") in ("certificate", "secret"):
+        errors += [f"{label} is required" for key, label in (("tenant_id", "Tenant ID"), ("client_id", "Client ID")) if not st.get(key)]
+    if sc.type == "azure" and st.get("auth") == "secret" and not have.get("client_secret"):
         errors.append("Client secret is required for client secret sign-in")
-    if sc.type == "f5_rest" and not secret_state(sc).get("password"):
+    if sc.type == "f5_rest" and not have.get("password"):
         errors.append("Password is required")
+    if sc.type == "f5_ssh" and not have.get("ssh_key" if st.get("ssh_auth") == "key" else "password"):
+        errors.append("Private key is required for key sign-in" if st.get("ssh_auth") == "key" else "Password is required")
+    if sc.type == "f5_ssh" and have.get("ssh_key"):
+        try:
+            ssh_key(vault.get(sc, "ssh_key"), vault.get(sc, "ssh_passphrase"))
+        except (paramiko.SSHException, ValueError) as e:
+            errors.append(f"The private key cannot be read: {e}")
     return sorted(set(errors), key=errors.index)
+
+
+def save_uploads(sc: SourceConfig, files: list, folder: Path) -> list[str]:
+    """Write uploaded F5 files into the source's own folder; a UCS archive gives up its bigip*.conf. Returns problems."""
+    errors = []
+    folder.mkdir(parents=True, exist_ok=True)
+    for up in files:
+        name = Path(up.filename or "").name
+        if not name or Path(name).suffix.lower() not in UPLOADS:
+            errors.append(f"{name or 'A file'}: not a .conf, .txt, .json or .ucs file")
+            continue
+        if name.lower().endswith(".ucs"):
+            try:
+                with tarfile.open(fileobj=up.file) as tar:
+                    for m in tar.getmembers():  # only the configuration text, never a path from the archive
+                        if m.isfile() and re.fullmatch(r"(\./)?config/bigip\w*\.conf", m.name):
+                            (folder / Path(m.name).name).write_bytes(tar.extractfile(m).read())
+            except tarfile.TarError:
+                errors.append(f"{name}: not a UCS archive")
+            continue
+        (folder / name).write_bytes(up.file.read())
+    sc.settings = {**sc.settings, "path": str(folder)}
+    return errors
 
 
 # ---------------------------------------------------------------- credentials
 
 def next_run(schedule: dict | None, after: datetime) -> datetime | None:
-    """Next time (UTC, naive) a schedule fires after `after`."""
+    """Next time (UTC, naive) a schedule fires after `after` (UTC, naive). "at" and "day" are in the schedule's time zone."""
     every = (schedule or {}).get("every", "off")
-    if every == "off":
+    if every in ("off", "default"):
         return None
     if every == "hourly":
         return after.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+    tz = ZoneInfo(schedule.get("tz", "UTC"))
+    local = after.replace(tzinfo=timezone.utc).astimezone(tz).replace(tzinfo=None)
     h, m = map(int, schedule.get("at", "02:00").split(":"))
-    t = after.replace(hour=h, minute=m, second=0, microsecond=0)
+    t = local.replace(hour=h, minute=m, second=0, microsecond=0)
     if every == "weekly":
         t += timedelta(days=(int(schedule.get("day", 0)) - t.weekday()) % 7)
-    while t <= after:
+    while t <= local:
         t += timedelta(days=7 if every == "weekly" else 1)
-    return t
+    return t.replace(tzinfo=tz).astimezone(timezone.utc).replace(tzinfo=None)
 
 
 def make_azure_certificate(sc: SourceConfig, kind: str = "certificate") -> None:
@@ -171,16 +265,19 @@ def promote_next_certificate(sc: SourceConfig) -> None:
 
 
 def azure_credential(sc: SourceConfig, certificate: str = "certificate"):
-    from azure.identity import CertificateCredential, ClientSecretCredential, DefaultAzureCredential
+    from azure.identity import CertificateCredential, ClientSecretCredential, DefaultAzureCredential, ManagedIdentityCredential
     st = sc.settings
+    authority = azure.CLOUDS[st.get("cloud", "public")]["login"]
     if st.get("auth") == "default":
-        return DefaultAzureCredential()
+        return DefaultAzureCredential(authority=authority)
+    if st.get("auth") == "managed_identity":
+        return ManagedIdentityCredential(client_id=st.get("mi_client_id") or None)
     if st.get("auth") == "secret":
-        return ClientSecretCredential(st["tenant_id"], st["client_id"], vault.get(sc, "client_secret") or "")
+        return ClientSecretCredential(st["tenant_id"], st["client_id"], vault.get(sc, "client_secret") or "", authority=authority)
     pem = vault.get(sc, certificate)
     if not pem:
         raise ValueError("No certificate yet: generate one on the source's page and upload the .cer to the app registration")
-    return CertificateCredential(st["tenant_id"], st["client_id"], certificate_data=pem.encode())
+    return CertificateCredential(st["tenant_id"], st["client_id"], certificate_data=pem.encode(), authority=authority)
 
 
 def f5_client(sc: SourceConfig, timeout: float = 120) -> f5.F5Client:
@@ -188,7 +285,53 @@ def f5_client(sc: SourceConfig, timeout: float = 120) -> f5.F5Client:
     if not password:
         raise ValueError("No password saved for this source")
     st = sc.settings
-    return f5.F5Client(st["host"], st["username"], password, ca_cert=st.get("ca_pem"), timeout=timeout)
+    return f5.F5Client(f5.address(st["host"], st.get("port")), st["username"], password, ca_cert=st.get("ca_pem"), timeout=timeout,
+                       token=st.get("token", True))
+
+
+def ssh_key(text: str, passphrase: str | None) -> paramiko.PKey:
+    import io
+    for kind in (paramiko.Ed25519Key, paramiko.ECDSAKey, paramiko.RSAKey):
+        try:
+            return kind.from_private_key(io.StringIO(text), password=passphrase or None)
+        except paramiko.PasswordRequiredException:
+            raise ValueError("it is encrypted: enter its passphrase") from None
+        except paramiko.SSHException:
+            continue
+    raise ValueError("not an OpenSSH or PEM private key")
+
+
+def ssh_run(sc: SourceConfig, timeout: float = 30):
+    """An open SSH connection to the device, pinned to its trusted host key, and a function that runs one command."""
+    st = sc.settings
+    if not st.get("host_key"):
+        raise ValueError("The host key is not trusted yet: use Fetch host key, compare it, then trust it")
+    client = paramiko.SSHClient()
+    kind, data = st["host_key"].split()
+    client.get_host_keys().add(st["host"] if st.get("port", 22) == 22 else f"[{st['host']}]:{st['port']}", kind,
+                               paramiko.PKey.from_type_string(kind, base64.b64decode(data)))
+    client.set_missing_host_key_policy(paramiko.RejectPolicy())
+    key = ssh_key(vault.get(sc, "ssh_key"), vault.get(sc, "ssh_passphrase")) if st.get("ssh_auth") == "key" else None
+    client.connect(st["host"], st.get("port", 22), st["username"], password=None if key else vault.get(sc, "password"), pkey=key,
+                   timeout=timeout, allow_agent=False, look_for_keys=False)
+
+    def run(cmd: str) -> tuple[int, str]:
+        _, out, err = client.exec_command(cmd, timeout=600)
+        text = out.read().decode(errors="replace") + err.read().decode(errors="replace")
+        return out.channel.recv_exit_status(), text
+    return client, run
+
+
+def fetch_host_key(host: str, port: int) -> dict:
+    """The SSH host key the device presents now, for the admin to compare and trust."""
+    with paramiko.Transport((host, port)) as t:
+        t.start_client(timeout=10)
+        k = t.get_remote_server_key()
+    return {"type": k.get_name(), "key": k.get_base64(), "fingerprint": ssh_fingerprint(k.asbytes())}
+
+
+def ssh_fingerprint(blob: bytes) -> str:
+    return "SHA256:" + base64.b64encode(hashlib.sha256(blob).digest()).decode().rstrip("=")
 
 
 def fetch_certificate(host: str) -> dict:
@@ -213,6 +356,15 @@ def collect(s: Session, cfg: dict, sc: SourceConfig, log: Callable[[str], None])
     password = vault.get(sc, "password") if sc.type == "f5_rest" else None
     if sc.type == "f5_rest" and not password:
         raise ValueError("No password saved for this source")
+    if sc.type == "f5_ssh":
+        client, run = ssh_run(sc)
+        try:
+            data, warnings = f5.fetch_ssh(run)
+        finally:
+            client.close()
+        for w in warnings:
+            log(f"warning: {w}")
+        src = {**src, "type": "f5_ssh", "data": data}
     return collect_source(s, cfg, src, credential=credential, password=password, log=log)
 
 
@@ -220,7 +372,7 @@ def test(cfg: dict, sc: SourceConfig, certificate: str = "certificate") -> tuple
     """Sign in and read a little. Returns (what was found, Azure scope for the pickers); raises on the first failure."""
     st = sc.settings
     if sc.type == "azure":
-        arm = azure.Arm(azure_credential(sc, certificate), httpx.Client(timeout=30))
+        arm = azure.Arm(azure_credential(sc, certificate), httpx.Client(timeout=30), cloud=st.get("cloud", "public"))
         subs = {x["subscriptionId"]: x["displayName"] for x in arm.list("/subscriptions", azure.API["subscriptions"])}
         workspaces = []
         for sid, sname in subs.items():
@@ -245,6 +397,13 @@ def test(cfg: dict, sc: SourceConfig, certificate: str = "certificate") -> tuple
             return [f"Signed in to {st['host']}. BIG-IP {f5.device_version(c) or 'version unknown'}."], None
         finally:
             c.logout()
+    if sc.type == "f5_ssh":
+        client, run = ssh_run(sc, timeout=20)
+        try:
+            version = f5.ssh_version(run)[1]
+        finally:
+            client.close()
+        return [f"Signed in over SSH to {st['host']}; the host key matches. BIG-IP {version or 'version unknown'}."], None
     p = resolve(cfg, st["path"])
     if sc.type == "logs":
         files = glob.glob(str(p))
@@ -270,6 +429,12 @@ def explain(e: Exception, sc: SourceConfig | None = None) -> str:
     """One line a person can act on. Never a stack trace."""
     if isinstance(e, vault.VaultError | ValueError):
         return str(e)
+    if isinstance(e, paramiko.BadHostKeyException):
+        return "The device's SSH host key has changed. If that is expected, fetch the new host key, compare it and trust it."
+    if isinstance(e, paramiko.AuthenticationException):
+        return "SSH sign-in failed: check the username, and the key (added to that user on the BIG-IP) or password."
+    if isinstance(e, paramiko.SSHException):
+        return f"SSH failed: {e}"
     if isinstance(e, FileNotFoundError):
         return f"Not found on the server: {e.filename}"
     if "Unable to get authority configuration" in str(e):
@@ -290,7 +455,7 @@ def explain(e: Exception, sc: SourceConfig | None = None) -> str:
                 return "401 from the BIG-IP: check the username and password."
             if code == 403:
                 return f"403 from the BIG-IP on {url.path}: the account lacks a role for this. Auditor covers everything read."
-        if url.host == azure.LOGS.removeprefix("https://"):
+        if any(url.host == c["logs"].removeprefix("https://") for c in azure.CLOUDS.values()):
             if code == 403:
                 return "No access to the Log Analytics workspace: give the app the Log Analytics Reader role on it."
             if code in (400, 404):
@@ -330,7 +495,7 @@ def problems(s: Session, tls_cert: Path | None = None) -> list[tuple[str, str]]:
 
 # ---------------------------------------------------------------- import and export
 
-SKIP = ("name", "type", "password_env", "ca_cert", "next_run")
+SKIP = ("name", "type", "password_env", "ca_cert", "next_run", "retry_at")
 
 
 def _settings(src: dict) -> dict:
@@ -347,13 +512,14 @@ def _settings(src: dict) -> dict:
         if k in src and not isinstance(src[k], str):
             raise ValueError(f"{src['name']}: {k} is not text")
     if isinstance(st.get("schedule"), dict):
-        st["schedule"] = {"every": "off", "at": "02:00", "day": 0, **st["schedule"]}
+        st["schedule"] = {"every": "off", "at": "02:00", "day": 0, "tz": "UTC", **st["schedule"]}
     if "schedule" in st and not valid_schedule(st["schedule"]):
-        raise ValueError(f"{src['name']}: schedule needs every = off, hourly, daily or weekly, at = \"HH:MM\" and day = 0 to 6")
+        raise ValueError(f"{src['name']}: schedule needs every = default, off, hourly, daily or weekly, at = \"HH:MM\", "
+                         "day = 0 to 6 and a known tz")
     return st
 
 
-def add_sources(s: Session, entries: list[dict], base: Path) -> tuple[list[str], list[str]]:
+def add_sources(s: Session, entries: list[dict], base: Path, default: dict = COLLECTION) -> tuple[list[str], list[str]]:
     """Add [[sources]] entries (config.toml shape) not present yet. Returns (added, skipped) names.
     Secrets written inline go to the vault; an F5 password may also come from the environment variable named by password_env."""
     have = {n for (n,) in s.query(SourceConfig.name)}
@@ -374,10 +540,9 @@ def add_sources(s: Session, entries: list[dict], base: Path) -> tuple[list[str],
             c = x509.load_pem_x509_certificate(st["ca_pem"].encode())
             st.update(ca_fingerprint=c.fingerprint(hashes.SHA256()).hex(":").upper(), ca_subject=c.subject.rfc4514_string(),
                       ca_expires=c.not_valid_after_utc.date().isoformat())
-        if st.get("schedule"):
-            nxt = next_run(st["schedule"], datetime.now(timezone.utc).replace(tzinfo=None))
-            st["next_run"] = nxt.isoformat() if nxt else None
         sc = SourceConfig(name=src["name"], type=src["type"], settings=st)
+        if st.get("schedule"):
+            reschedule(sc, default)
         if src["type"] == "f5_rest" and (pw := os.environ.get(str(src.get("password_env", "F5_PASSWORD")))):
             vault.put(sc, "password", pw)
         for k in SECRETS & src.keys():
@@ -394,7 +559,13 @@ def import_config(s: Session, cfg: dict) -> int:
     """First start only: copy config.toml sources into the console."""
     if s.query(SourceConfig.id).first() or not cfg.get("sources"):
         return 0
-    return len(add_sources(s, cfg["sources"], cfg["_dir"])[0])
+    return len(add_sources(s, cfg["sources"], cfg["_dir"], collection(s))[0])
+
+
+def collection(s: Session) -> dict:
+    """Settings › Data collection: the default schedule, catch-up and retry."""
+    from .models import get_setting
+    return {**COLLECTION, **get_setting(s, "collection")}
 
 
 def _toml(v) -> str:

@@ -48,7 +48,7 @@ def test_effective_policy_on_endpoints(session):
 def test_dashboard_pages(client, demo_db):
     c = client
     r = c.get("/")
-    assert r.status_code == 200 and "applications" in r.text and "web listeners in blocking mode" in r.text
+    assert r.status_code == 200 and "applications" in r.text and "of web listeners" in r.text and "Run all now" in r.text
     for name in report.TABLES:
         r = c.get(f"/t/{name}")
         assert r.status_code == 200, name

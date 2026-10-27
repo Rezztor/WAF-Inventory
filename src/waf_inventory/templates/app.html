@@ -1,16 +1,16 @@
 {% extends "base.html" %}{% from "_macros.html" import grid, badge %}
 {% block title %}{{ host }} · WAF Inventory{% endblock %}
+{% block heading %}{{ host }}{% endblock %}
 {% block body %}
-<h1>{{ host }}</h1>
 {% for l in listeners %}
 <h2>{{ l.gateway.name }} <span class="muted">({{ l.gateway.vendor }} {{ l.gateway.kind }})</span> / {{ l.name }}</h2>
-<dl class="kv">
+<div class="card pad"><dl class="kv">
   <dt>Protocol / port</dt><dd>{{ l.protocol }} {{ l.address or "" }}{{ ":" ~ l.port if l.port }}</dd>
   <dt>Hostnames</dt><dd>{{ l.hostnames | join(", ") or "any" }}</dd>
   <dt>WAF inspected</dt><dd>{{ badge(l.waf_capable) }}</dd>
   <dt>Default WAF policy</dt><dd>{% if l.policy %}<a href="/policy/{{ l.policy.id }}">{{ l.policy.name }}</a> {{ badge(l.policy.mode) }}{% else %}{{ badge("none") }}{% endif %}</dd>
-</dl>
-<div class="tw" style="margin-top:10px"><table>
+</dl></div>
+<div class="tw"><table>
 <thead><tr><th>route</th><th>hosts</th><th>paths</th><th>backend</th><th>effective WAF policy</th><th>mode</th></tr></thead>
 <tbody>{% for r in l.routes %}<tr><td>{{ r.name }}</td><td>{{ r.hosts | join(", ") }}</td><td><code>{{ r.paths | join(", ") }}</code></td>
 <td>{{ (r.backend or {}).get("name") or "" }} <span class="muted">{{ (r.backend or {}).get("members", []) | select | join(", ") }}</span></td>
