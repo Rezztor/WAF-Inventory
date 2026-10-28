@@ -1,9 +1,9 @@
 name: CI
 
-# Push only, never pull_request: the repository is public and runs on Rezztor's own runner, so a pull request from a
-# fork would run its code there. Our pull requests come from branches here, so their pushes are tested.
+# GitHub's own runners: free for a public repository, and a pull request from a fork runs there, not on our machines.
 on:
   push:
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -11,8 +11,7 @@ permissions:
 
 jobs:
   test:
-    # GitHub-hosted runners are not used (Actions billing); each job runs in a container on the CI VM.
-    runs-on: [self-hosted, linux, ci-vm]
+    runs-on: ubuntu-latest
     container: python:${{ matrix.python }}-slim
     timeout-minutes: 20
     strategy:
