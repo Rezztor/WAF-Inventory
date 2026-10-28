@@ -183,6 +183,7 @@ def settings(a: dict, crs: str | None) -> dict:
         "ip_lists": [f"{r.get('policy')}: {r.get('address')}" for r in (acl.get("rules") or {}).get("ipRanges", [])]
                     + [f"{r.get('policy')}: IP list {r.get('id')}" for r in (acl.get("rules") or {}).get("ipLists", [])],
         "allowed_sources": allowed.get("sources", []) if allowed.get("enforcement") == "ENABLED" else [],
+        "frontend_tls": fe.get("connectionType") == "SECURE",
         "hsts": bool((fe.get("httpStrictTransportSecurity") or {}).get("enabled")) if fe.get("connectionType") == "SECURE" else None,
         "backend_tls": "plaintext" if tls is None else {"SYSTEM_TRUSTSTORE": "verified (system CAs)",
                                                          "CUSTOM_TRUSTSTORE": "verified (own CA)"}.get(verify, "not verified"),

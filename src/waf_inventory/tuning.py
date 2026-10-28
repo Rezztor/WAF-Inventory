@@ -137,6 +137,7 @@ def patch_json(session: Session) -> str:
         sw = a["staged_was"] or {"state": "ENABLED", "mode": "PARANOIA_LEVEL", "paranoiaLevel": a["paranoia_level"],
                                  "cookieExclusions": a["cookie_exclusions"]}
         out.append({"proxy": a["proxy"], "traffic_config_id": a["id"],
+                    "rule_ids": {r["id"]: f"{r['modSecId']} {r['name']}".strip() for rs in a["additions"].values() for r in rs},
                     "unknown_rule_ids": sorted({r["modSecId"] for rs in a["additions"].values() for r in rs if not r["known"]}),
                     "1_stage": {"data": {"type": "httpProxy", "id": a["id"],
                                          "attributes": {"waf": {"stagedWaf": {**sw, "pathExclusions": a["staged"]}}}}},

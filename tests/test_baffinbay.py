@@ -54,8 +54,11 @@ def test_findings_for_proxy_settings(session):
             ("risky-methods", "baffinbay: contoso-blog"), ("body-inspection-off", "baffinbay: contoso-blog"),
             ("matched-data-off", "baffinbay: contoso-blog"), ("no-bot-protection", "baffinbay: contoso-blog"),
             ("backend-tls-unverified", "baffinbay: contoso-portal"), ("wide-exclusion", "baffinbay: contoso-portal"),
-            ("disabled-rules", "baffinbay: contoso-portal"), ("tuning-candidates", "baffinbay: contoso-portal")} <= got
+            ("disabled-rules", "baffinbay: contoso-portal"), ("tuning-candidates", "baffinbay: contoso-portal"),
+            ("no-frontend-tls", "baffinbay: contoso-blog"), ("paranoia-1", "baffinbay: contoso-blog"),
+            ("no-hsts", "baffinbay: contoso-careers")} <= got
     assert ("no-hsts", "baffinbay: contoso-blog") not in got  # plain HTTP: HSTS does not apply
+    assert not {f for f in got if f[1] == "baffinbay: contoso-careers"} - {("no-hsts", "baffinbay: contoso-careers")}
 
 
 def test_tuning_tells_false_positives_from_attacks(session):
@@ -121,6 +124,7 @@ def test_tuning_page_decisions_and_change_files(console):
                   follow_redirects=False).status_code == 303
     body = json.loads(c.get("/export/tuning-approved.json").text)
     assert [x["proxy"] for x in body] == ["contoso-portal"] and body[0]["unknown_rule_ids"] == []
+    assert list(body[0]["rule_ids"].values()) == ["942100 SQL Injection Attack Detected via libinjection"]  # the uuids, readable
     staged = body[0]["1_stage"]["data"]["attributes"]["waf"]["stagedWaf"]
     assert staged["state"] == "ENABLED" and staged["paranoiaLevel"] == 3  # the staged WAF's own settings are kept
     assert [e["match"] for e in staged["pathExclusions"]] == ["/api/v1/search", "/api/v1/orders/{*}/notes"]  # existing ones stay

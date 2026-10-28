@@ -317,6 +317,95 @@
     }
    },
    {
+    "type": "httpProxy",
+    "id": "ac42992f-d97b-5d01-83fe-ea67b3db6dce",
+    "attributes": {
+     "name": "contoso-careers",
+     "version": "0.1.0",
+     "botProtection": {
+      "strategy": "AUTO",
+      "challengeType": "JS"
+     },
+     "frontend": {
+      "connectionType": "SECURE",
+      "ipv4": "203.0.113.40",
+      "port": 443,
+      "redirectHttp": true,
+      "httpStrictTransportSecurity": {
+       "enabled": false
+      },
+      "hosts": [
+       {
+        "host": "careers.contoso.com",
+        "certificateId": "daba34e6-fd1c-5062-8870-f0b219a28bc5",
+        "tlsConfig": "INTERMEDIATE"
+       }
+      ]
+     },
+     "backend": {
+      "hosts": [
+       {
+        "address": "origin-careers.contoso.internal",
+        "port": 443
+       }
+      ],
+      "deliveryMethod": "ROUND_ROBIN",
+      "tlsSettings": {
+       "verifyCertificate": {
+        "mode": "SYSTEM_TRUSTSTORE"
+       }
+      }
+     },
+     "deployment": {
+      "state": "DEPLOYED"
+     },
+     "waf": {
+      "enforcement": "BLOCK",
+      "paranoidLevel": 2,
+      "sourceExclusions": {
+       "enabled": false,
+       "sources": []
+      },
+      "httpCompliance": {
+       "globalConfig": {
+        "parameterLimit": {
+         "enabled": true,
+         "limit": 255
+        },
+        "allowedHttpMethods": [
+         "GET",
+         "POST",
+         "PUT",
+         "DELETE",
+         "OPTIONS"
+        ],
+        "allowedHttpVersions": [
+         "HTTP/1.1",
+         "HTTP/2"
+        ]
+       },
+       "resourceConfigs": []
+      },
+      "pathExclusions": [],
+      "cookieExclusions": [],
+      "matchedDataEnabled": true,
+      "coreRuleSet": {
+       "version": "4.22.0"
+      }
+     },
+     "rateLimiting": {
+      "bySrcIp": {
+       "enforcement": "BLOCK",
+       "rate": {
+        "value": 50,
+        "unit": "r/s"
+       },
+       "burst": 10
+      }
+     }
+    }
+   },
+   {
     "type": "l4Proxy",
     "id": "1f382388-04ce-59c1-bfe2-b62d0ee6f0b6",
     "attributes": {

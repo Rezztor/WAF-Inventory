@@ -113,6 +113,10 @@ def _baffinbay(add, st: dict, subj: str) -> None:
         add("matched-data-off", "low", "WAF matched data is not recorded, so false positives are harder to judge", subj)
     if st.get("hsts") is False:
         add("no-hsts", "low", "HTTPS without HSTS", subj)
+    if st.get("frontend_tls") is False:
+        add("no-frontend-tls", "medium", "Published over plain HTTP", subj)
+    if st.get("paranoia_level") == 1:
+        add("paranoia-1", "low", "WAF at paranoia level 1, the least strict", subj, "try level 2 in the Staged WAF first")
 
 
 def _api_findings(session: Session, specs: list[dict]) -> list[Finding]:
