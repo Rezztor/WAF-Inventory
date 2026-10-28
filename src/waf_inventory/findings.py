@@ -119,9 +119,16 @@ def _api_findings(session: Session, specs: list[dict]) -> list[Finding]:
             out.append(Finding(rule="shadow-api", severity="high", title="Shadow API: not in the OpenAPI spec",
                                subject=subj, detail=f"{e.hits} request(s)"))
 
+    stray = []  # hosts with no confirmed endpoint: mostly scanners sending made-up Host headers
     for host, eps in unknown.items():  # one finding per host, however many paths it was probed on
+        if not any(e.confirmed for e in eps):
+            stray.append(host)
+            continue
         out.append(Finding(rule="unknown-host", severity="medium", title="Traffic for a host not in the inventory", subject=host,
                            detail=f"{len(eps)} endpoint(s), {sum(e.hits for e in eps)} request(s)"))
+    if stray:
+        out.append(Finding(rule="stray-hosts", severity="low", title="A few requests for hosts not in the inventory",
+                           subject=f"{len(stray)} host(s)", detail=", ".join(sorted(stray)[:10]) + (" …" if len(stray) > 10 else "")))
 
     for host, ops in spec_paths.items():
         eps = seen.get(host, [])

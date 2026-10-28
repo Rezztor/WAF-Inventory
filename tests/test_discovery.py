@@ -87,5 +87,6 @@ def test_glob_and_template_regex():
 
 def test_not_found_probes_are_not_endpoints():
     rows = [obs("a.com", "GET", "/.env", status=404, hits=40), obs("a.com", "GET", "/.aws/credentials", status=404),
+            obs("a.com", "GET", "/server/.env", status=499),
             obs("a.com", "GET", "/api/items", status=200), obs("a.com", "GET", "/api/items", status=404)]
     assert templates(d.discover(rows)) == {("GET", "/api/items")}

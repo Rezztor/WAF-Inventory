@@ -27,6 +27,7 @@ def test_findings_cover_the_planted_issues(session):
         ("shadow-api", "GET shop.contoso.com/api/internal/debug/config"),  # not in the OpenAPI spec
         ("unprotected-api", "POST partners.contoso.com/api/partner/orders"),
         ("unknown-host", "old.contoso.com"),
+        ("stray-hosts", "1 host(s)"),  # probe.invalid: one request with a made-up Host header
         ("dormant-api", "GET shop.contoso.com/api/v1/wishlist"),
     }
     assert expected <= got, expected - got
@@ -34,6 +35,7 @@ def test_findings_cover_the_planted_issues(session):
     assert ("shadow-api", "GET app1.corp.contoso.com/api/v1/employees/{employee_id}") not in got
     assert ("shadow-api", "GET shop.contoso.com/api/v1/orders/{order_id}") not in got
     assert ("waf-disabled", "f5: /Common/old_unused_waf") not in got  # unattached: reported once as unused
+    assert ("unknown-host", "probe.invalid") not in got
 
 
 def test_effective_policy_on_endpoints(session):
