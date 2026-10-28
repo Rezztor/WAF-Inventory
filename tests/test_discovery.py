@@ -83,3 +83,9 @@ def test_glob_and_template_regex():
     assert d.glob_rx("/api/v1/employees/*").match("/api/v1/employees/12/x")
     assert not d.glob_rx("/api/v1/employees").match("/api/v1/employees/12")
     assert d.template_rx("/orders/{id}").match("/orders/5") and not d.template_rx("/orders/{id}").match("/orders/5/x")
+
+
+def test_not_found_probes_are_not_endpoints():
+    rows = [obs("a.com", "GET", "/.env", status=404, hits=40), obs("a.com", "GET", "/.aws/credentials", status=404),
+            obs("a.com", "GET", "/api/items", status=200), obs("a.com", "GET", "/api/items", status=404)]
+    assert templates(d.discover(rows)) == {("GET", "/api/items")}

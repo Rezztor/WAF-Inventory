@@ -162,6 +162,8 @@ def discover(observations: Iterable[dict], cfg: Config | None = None) -> list[di
 
     out = []
     for (host, method, key), a in aggs.items():
+        if a.statuses and set(a.statuses) <= {"404"}:
+            continue  # only ever "not found": scanner probes and typos, not an endpoint
         template, params = _name(key, a.types)
         kind, conf = classify(host, method, template, a.ctypes, a.statuses, a.agents)
         out.append({"host": host, "method": method, "template": template, "kind": kind, "confidence": conf,

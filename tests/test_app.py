@@ -26,7 +26,7 @@ def test_findings_cover_the_planted_issues(session):
         ("shadow-api", "GET app1.corp.contoso.com/api/v1/payroll/export"),  # not in ASM allowed URLs
         ("shadow-api", "GET shop.contoso.com/api/internal/debug/config"),  # not in the OpenAPI spec
         ("unprotected-api", "POST partners.contoso.com/api/partner/orders"),
-        ("unknown-host", "GET old.contoso.com/api/status"),
+        ("unknown-host", "old.contoso.com"),
         ("dormant-api", "GET shop.contoso.com/api/v1/wishlist"),
     }
     assert expected <= got, expected - got

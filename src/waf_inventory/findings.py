@@ -96,12 +96,12 @@ def _api_findings(session: Session, specs: list[dict]) -> list[Finding]:
             spec_paths.setdefault(host.lower(), []).extend((m.upper(), path) for m in ops if not m.startswith("x-"))
 
     seen: dict[str, list[Endpoint]] = {}
+    unknown: dict[str, list[Endpoint]] = {}
     for e in session.query(Endpoint):
         seen.setdefault(e.host, []).append(e)
         subj, sample = f"{e.method} {e.host}{e.template}", (e.samples or [e.template])[0]
         if not inv.listeners_for(e.host):
-            out.append(Finding(rule="unknown-host", severity="medium", title="Traffic for a host not in the inventory",
-                               subject=subj, detail=f"{e.hits} request(s)"))
+            unknown.setdefault(e.host, []).append(e)
             continue
         if e.kind != "api" or not e.confirmed:
             continue
@@ -118,6 +118,10 @@ def _api_findings(session: Session, specs: list[dict]) -> list[Finding]:
                                             for m, t in spec_paths[e.host] for s in e.samples):
             out.append(Finding(rule="shadow-api", severity="high", title="Shadow API: not in the OpenAPI spec",
                                subject=subj, detail=f"{e.hits} request(s)"))
+
+    for host, eps in unknown.items():  # one finding per host, however many paths it was probed on
+        out.append(Finding(rule="unknown-host", severity="medium", title="Traffic for a host not in the inventory", subject=host,
+                           detail=f"{len(eps)} endpoint(s), {sum(e.hits for e in eps)} request(s)"))
 
     for host, ops in spec_paths.items():
         eps = seen.get(host, [])

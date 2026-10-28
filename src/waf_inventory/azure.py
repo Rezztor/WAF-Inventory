@@ -96,15 +96,16 @@ def fetch_bundle(arm: Arm, subscriptions: Iterable[str] = ()) -> dict:
 
 # Access logs from App Gateway (resource-specific and AzureDiagnostics) and Front Door Std/Premium,
 # aggregated in the workspace so only one row per (host, method, path, query names, status, content type) comes back.
+# App Gateway logs the host header it sent to the backend in Host, so the client's OriginalHost comes first.
 ACCESS_KQL = r"""
 union isfuzzy=true
  (AGWAccessLogs
-  | project TimeGenerated, Host = tostring(column_ifexists("Host", "")), Method = tostring(column_ifexists("HttpMethod", "")),
+  | project TimeGenerated, Host = coalesce(tostring(column_ifexists("OriginalHost", "")), tostring(column_ifexists("Host", ""))), Method = tostring(column_ifexists("HttpMethod", "")),
             Uri = tostring(column_ifexists("RequestUri", "")), Status = toint(column_ifexists("HttpStatus", 0)),
             ContentType = tostring(column_ifexists("ContentType", "")), UserAgent = tostring(column_ifexists("UserAgent", ""))),
  (AzureDiagnostics | where Category == "ApplicationGatewayAccessLog"
   | extend q = tostring(column_ifexists("requestQuery_s", ""))
-  | project TimeGenerated, Host = tostring(column_ifexists("host_s", "")), Method = tostring(column_ifexists("httpMethod_s", "")),
+  | project TimeGenerated, Host = coalesce(tostring(column_ifexists("originalHost_s", "")), tostring(column_ifexists("host_s", ""))), Method = tostring(column_ifexists("httpMethod_s", "")),
             Uri = strcat(tostring(column_ifexists("requestUri_s", "")), iff(isempty(q), "", strcat("?", q))),
             Status = toint(column_ifexists("httpStatus_d", 0)), ContentType = "", UserAgent = tostring(column_ifexists("userAgent_s", ""))),
  (AzureDiagnostics | where Category == "FrontDoorAccessLog"
