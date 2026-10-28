@@ -3,6 +3,7 @@ name: CI
 # GitHub's own runners: free for a public repository, and a pull request from a fork runs there, not on our machines.
 on:
   push:
+    branches: [main]  # a branch with a pull request is tested by the pull_request run
   pull_request:
   workflow_dispatch:
 
