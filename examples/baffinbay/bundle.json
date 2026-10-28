@@ -1,0 +1,4406 @@
+{
+ "traffic_configs": {
+  "data": [
+   {
+    "type": "httpProxy",
+    "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7",
+    "attributes": {
+     "name": "contoso-portal",
+     "version": "0.1.0",
+     "connectionReuseEnabled": true,
+     "botProtection": {
+      "strategy": "AUTO",
+      "challengeType": "JS"
+     },
+     "frontend": {
+      "connectionType": "SECURE",
+      "ipv4": "203.0.113.10",
+      "port": 443,
+      "redirectHttp": true,
+      "httpStrictTransportSecurity": {
+       "enabled": true,
+       "maxAge": 31536000,
+       "includeSubdomains": true,
+       "preload": false
+      },
+      "hosts": [
+       {
+        "host": "portal.contoso.com",
+        "certificateId": "4fe35247-7676-5641-bcfa-fe4e630c9027",
+        "tlsConfig": "INTERMEDIATE"
+       },
+       {
+        "host": "api.contoso.com",
+        "certificateId": "2453f7d1-c5b4-5291-b40b-0697935dd7c5",
+        "tlsConfig": "INTERMEDIATE"
+       }
+      ],
+      "clientCertificateVerification": {
+       "mode": "DISABLED"
+      }
+     },
+     "backend": {
+      "hosts": [
+       {
+        "address": "origin-portal.contoso.internal",
+        "port": 443
+       }
+      ],
+      "deliveryMethod": "ROUND_ROBIN",
+      "serverName": "origin-portal.contoso.internal",
+      "tlsSettings": {
+       "verifyCertificate": {
+        "mode": "DISABLED"
+       }
+      }
+     },
+     "protocolSettings": {
+      "httpVersion": "HTTP2.0"
+     },
+     "deployment": {
+      "state": "DEPLOYED"
+     },
+     "waf": {
+      "enforcement": "BLOCK",
+      "paranoidLevel": 2,
+      "sourceExclusions": {
+       "enabled": false,
+       "sources": []
+      },
+      "httpCompliance": {
+       "globalConfig": {
+        "parameterLimit": {
+         "enabled": true,
+         "limit": 255
+        },
+        "allowedHttpMethods": [
+         "GET",
+         "POST",
+         "PUT",
+         "DELETE",
+         "OPTIONS"
+        ],
+        "allowedHttpVersions": [
+         "HTTP/1.1",
+         "HTTP/2"
+        ]
+       },
+       "resourceConfigs": []
+      },
+      "pathExclusions": [
+       {
+        "match": "/api/v1/search",
+        "disableAll": false,
+        "rules": [
+         {
+          "type": "rule",
+          "id": "8129aa3c-67f7-5d06-8124-c7d8add482d2"
+         }
+        ]
+       },
+       {
+        "match": "/{*}/upload",
+        "disableAll": true,
+        "rules": []
+       }
+      ],
+      "cookieExclusions": [],
+      "matchedDataEnabled": true,
+      "coreRuleSet": {
+       "version": "4.*.*"
+      },
+      "stagedWaf": {
+       "state": "ENABLED",
+       "mode": "PARANOIA_LEVEL",
+       "paranoiaLevel": 3,
+       "cookieExclusions": [],
+       "pathExclusions": [
+        {
+         "match": "/api/v1/search",
+         "disableAll": false,
+         "rules": [
+          {
+           "type": "rule",
+           "id": "8129aa3c-67f7-5d06-8124-c7d8add482d2"
+          }
+         ]
+        }
+       ]
+      }
+     },
+     "geoFencing": {
+      "type": "BLOCK",
+      "regions": [
+       "KP"
+      ]
+     },
+     "allowedSources": {
+      "enforcement": "DISABLED",
+      "sources": []
+     },
+     "ipBasedAccessControl": {
+      "defaultPolicy": "ALLOW",
+      "rules": {
+       "ipRanges": [
+        {
+         "policy": "BLOCK",
+         "address": "198.51.100.0/24",
+         "note": "abuse"
+        }
+       ],
+       "ipLists": []
+      }
+     },
+     "rateLimiting": {
+      "bySrcIp": {
+       "enforcement": "BLOCK",
+       "rate": {
+        "value": 100,
+        "unit": "r/s"
+       },
+       "burst": 10
+      },
+      "bySrcIpAndUrl": {
+       "enforcement": "DISABLED",
+       "rate": {
+        "value": 100,
+        "unit": "r/s"
+       },
+       "burst": 10
+      },
+      "exclusions": []
+     },
+     "trafficRules": [
+      {
+       "name": "legacy-api",
+       "matchingConditions": [
+        {
+         "paths": [
+          "/legacy/{*}"
+         ],
+         "hosts": {
+          "type": "SELECT",
+          "values": [
+           "api.contoso.com"
+          ]
+         }
+        }
+       ],
+       "actions": {
+        "setBackends": [
+         {
+          "address": "legacy.contoso.internal",
+          "port": 8080
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "relationships": {
+     "managedConfig": {
+      "data": {
+       "id": "510d024f-699b-5ddd-ab93-593225f9eb39",
+       "type": "managedConfig"
+      }
+     }
+    }
+   },
+   {
+    "type": "httpProxy",
+    "id": "bbfb8c28-510b-554a-9a84-c9d8086940a3",
+    "attributes": {
+     "name": "contoso-blog",
+     "version": "0.1.0",
+     "botProtection": {
+      "strategy": "DISABLED"
+     },
+     "frontend": {
+      "connectionType": "PLAINTEXT",
+      "ipv4": "203.0.113.20",
+      "port": 80,
+      "hosts": [
+       {
+        "host": "blog.contoso.com"
+       }
+      ]
+     },
+     "backend": {
+      "hosts": [
+       {
+        "address": "10.20.0.15",
+        "port": 80
+       }
+      ],
+      "deliveryMethod": "ROUND_ROBIN"
+     },
+     "protocolSettings": {
+      "httpVersion": "HTTP1.1",
+      "multiplexing": false,
+      "enableWebsockets": false
+     },
+     "deployment": {
+      "state": "DEPLOYED"
+     },
+     "waf": {
+      "enforcement": "LOG",
+      "paranoidLevel": 1,
+      "sourceExclusions": {
+       "enabled": false,
+       "sources": []
+      },
+      "httpCompliance": {
+       "globalConfig": {
+        "parameterLimit": {
+         "enabled": true,
+         "limit": 255
+        },
+        "allowedHttpMethods": [
+         "GET",
+         "POST",
+         "HEAD",
+         "TRACE"
+        ],
+        "allowedHttpVersions": [
+         "HTTP/1.1",
+         "HTTP/2"
+        ]
+       },
+       "resourceConfigs": [
+        {
+         "matches": [
+          {
+           "path": "/xmlrpc.php"
+          }
+         ],
+         "config": {
+          "parseJsonEnabled": true,
+          "parseXmlEnabled": false,
+          "parseMultipartRequestEnabled": true
+         }
+        }
+       ]
+      },
+      "pathExclusions": [],
+      "cookieExclusions": [],
+      "matchedDataEnabled": false,
+      "coreRuleSet": {
+       "version": "4.18.0"
+      }
+     },
+     "rateLimiting": {
+      "bySrcIp": {
+       "enforcement": "DISABLED",
+       "rate": {
+        "value": 100,
+        "unit": "r/s"
+       },
+       "burst": 10
+      },
+      "bySrcIpAndUrl": {
+       "enforcement": "DISABLED",
+       "rate": {
+        "value": 100,
+        "unit": "r/s"
+       },
+       "burst": 10
+      }
+     }
+    },
+    "relationships": {
+     "managedConfig": {
+      "data": {
+       "id": "79660e30-d3af-5588-84aa-1688886b98fd",
+       "type": "managedConfig"
+      }
+     }
+    }
+   },
+   {
+    "type": "l4Proxy",
+    "id": "1f382388-04ce-59c1-bfe2-b62d0ee6f0b6",
+    "attributes": {
+     "name": "contoso-sftp",
+     "frontend": {
+      "ipv4": "203.0.113.30",
+      "port": 22
+     },
+     "deployment": {
+      "state": "DEPLOYED"
+     }
+    }
+   }
+  ],
+  "included": [
+   {
+    "data": {
+     "id": "510d024f-699b-5ddd-ab93-593225f9eb39",
+     "type": "managedConfig",
+     "attributes": {
+      "waf": {
+       "coreRuleSet": {
+        "resolvedId": "crs-v4.22.0"
+       }
+      }
+     }
+    }
+   },
+   {
+    "data": {
+     "id": "79660e30-d3af-5588-84aa-1688886b98fd",
+     "type": "managedConfig",
+     "attributes": {
+      "waf": {
+       "coreRuleSet": {
+        "resolvedId": "crs-v4.18.0"
+       }
+      }
+     }
+    }
+   }
+  ]
+ },
+ "core_rule_sets": {
+  "crs-v4.22.0": {
+   "942100": "216acd0a-7612-5719-9d6b-3e8f6505a6cb",
+   "930130": "17251338-d424-5225-88b9-5da31e7a4d3e",
+   "932160": "513fa9c1-1755-562c-b5aa-3b390decab4f",
+   "941100": "3b8aca73-da8d-5f83-a51e-f18f6ce06e0c",
+   "941160": "7b49b9eb-7776-5892-af62-5e370d7f9142",
+   "920420": "934bc937-5e58-56cb-81ae-b617ed62a0a8",
+   "942430": "8129aa3c-67f7-5d06-8124-c7d8add482d2"
+  },
+  "crs-v4.18.0": {
+   "942100": "216acd0a-7612-5719-9d6b-3e8f6505a6cb",
+   "930130": "17251338-d424-5225-88b9-5da31e7a4d3e",
+   "932160": "513fa9c1-1755-562c-b5aa-3b390decab4f",
+   "941100": "3b8aca73-da8d-5f83-a51e-f18f6ce06e0c",
+   "941160": "7b49b9eb-7776-5892-af62-5e370d7f9142",
+   "920420": "934bc937-5e58-56cb-81ae-b617ed62a0a8",
+   "942430": "8129aa3c-67f7-5d06-8124-c7d8add482d2"
+  }
+ },
+ "events": [
+  {
+   "type": "WAF_EVENT",
+   "id": "f336b694-67f1-5c10-bc7e-f31b08525ea6",
+   "attributes": {
+    "timestamp": "2026-10-22T12:09:00.000Z",
+    "supportId": "67f02707e74b581cabcf730b1a4b2284",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Please leave it at the back door; thanks"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "AE",
+     "ip": "192.0.2.10",
+     "port": 40000
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4100/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4100/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "3dbb5d9c-e65d-504b-a2dc-8c9319877023",
+   "attributes": {
+    "timestamp": "2026-10-22T12:09:01.000Z",
+    "supportId": "0ba61ad93d195e4d90024695401ef6ce",
+    "action": "LOGGED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "staging",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Please leave it at the back door; thanks"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "AE",
+     "ip": "192.0.2.10",
+     "port": 40001
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4100/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4100/notes HTTP/1.1",
+     "statusCode": 201
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "ea8d0cbb-62fa-5807-9806-87b5821a67c3",
+   "attributes": {
+    "timestamp": "2026-10-23T13:41:00.000Z",
+    "supportId": "c06ffcd562405770a2e6a62999866d38",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Deliver after 5 o'clock -- call first"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "GB",
+     "ip": "192.0.2.11",
+     "port": 40002
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4107/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4107/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "8ed0a515-840c-54d5-b64d-2c04a722a787",
+   "attributes": {
+    "timestamp": "2026-10-24T07:04:00.000Z",
+    "supportId": "1c7947fff417594fb07c63b7fc36cbf9",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Gift: don't include the invoice"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "DE",
+     "ip": "192.0.2.12",
+     "port": 40003
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4114/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4114/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "a6508622-4481-52c5-ab98-4d325b0285f8",
+   "attributes": {
+    "timestamp": "2026-10-25T15:06:00.000Z",
+    "supportId": "f0cc65877a3f5d3ba6630db68bb46ce8",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Ring twice, 2nd floor (flat 4B)"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "IN",
+     "ip": "192.0.2.13",
+     "port": 40004
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4121/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4121/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "6e8b0f6b-8901-59c0-bc9a-8c22c0ea2593",
+   "attributes": {
+    "timestamp": "2026-10-25T15:06:01.000Z",
+    "supportId": "3662dc88955f52009a4d0c8f7c3e4ee0",
+    "action": "LOGGED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "staging",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Ring twice, 2nd floor (flat 4B)"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "IN",
+     "ip": "192.0.2.13",
+     "port": 40005
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4121/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4121/notes HTTP/1.1",
+     "statusCode": 201
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "603c791a-0e62-590d-a51c-d7459f6bb434",
+   "attributes": {
+    "timestamp": "2026-10-26T12:37:00.000Z",
+    "supportId": "bf64f9e79d2c59bcb40a874d5ade2850",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Please leave it at the back door; thanks"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "SA",
+     "ip": "192.0.2.14",
+     "port": 40006
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4128/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4128/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "c6124341-92e0-560c-aa83-78cb688c7e63",
+   "attributes": {
+    "timestamp": "2026-10-27T07:58:00.000Z",
+    "supportId": "03f52ce1dcf5529696c85099688a38a5",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Deliver after 5 o'clock -- call first"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "AE",
+     "ip": "192.0.2.15",
+     "port": 40007
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4135/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4135/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "3ed6084a-7516-5a64-badd-223444b56d7c",
+   "attributes": {
+    "timestamp": "2026-10-22T15:13:00.000Z",
+    "supportId": "ea5f139741ff51238dc42d4117943fcf",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Gift: don't include the invoice"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "GB",
+     "ip": "192.0.2.16",
+     "port": 40008
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4142/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4142/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "270d73d1-0095-561a-a20e-3172b41e08d7",
+   "attributes": {
+    "timestamp": "2026-10-22T15:13:01.000Z",
+    "supportId": "2acd9b78257d537b8faffa22a75ebbfd",
+    "action": "LOGGED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "staging",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Gift: don't include the invoice"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "GB",
+     "ip": "192.0.2.16",
+     "port": 40009
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4142/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4142/notes HTTP/1.1",
+     "statusCode": 201
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "9e5ca57d-25e3-56cd-b21a-7603603a0271",
+   "attributes": {
+    "timestamp": "2026-10-23T07:05:00.000Z",
+    "supportId": "72574a700e145c1a8f68730e437a6f98",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Ring twice, 2nd floor (flat 4B)"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "DE",
+     "ip": "192.0.2.17",
+     "port": 40010
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4149/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4149/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "be1f409e-dbf0-55b7-939d-354bcfd4621f",
+   "attributes": {
+    "timestamp": "2026-10-24T13:26:00.000Z",
+    "supportId": "36221055b50c5521bcbbd50f5e732ca2",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Please leave it at the back door; thanks"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "IN",
+     "ip": "192.0.2.18",
+     "port": 40011
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4156/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4156/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "53deb837-5e32-5e21-9d2f-d0dd0117836c",
+   "attributes": {
+    "timestamp": "2026-10-25T08:15:00.000Z",
+    "supportId": "6f58f4bf0e1b52c1901d6a9193a57b4e",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Deliver after 5 o'clock -- call first"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "SA",
+     "ip": "192.0.2.19",
+     "port": 40012
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4163/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4163/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "ec5b17ab-62d9-5057-ac48-263becf3fe97",
+   "attributes": {
+    "timestamp": "2026-10-25T08:15:01.000Z",
+    "supportId": "cb94d382abd85edeae82a475bcf2afbe",
+    "action": "LOGGED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "staging",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Deliver after 5 o'clock -- call first"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "SA",
+     "ip": "192.0.2.19",
+     "port": 40013
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4163/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4163/notes HTTP/1.1",
+     "statusCode": 201
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "11eb3419-095b-506b-96c9-3ee372fbc4a4",
+   "attributes": {
+    "timestamp": "2026-10-26T08:35:00.000Z",
+    "supportId": "176477b3a37751489806aa294a34e43a",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Gift: don't include the invoice"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "AE",
+     "ip": "192.0.2.20",
+     "port": 40014
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4170/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4170/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "5a579e71-de2b-56e4-ae86-079cf4fc192b",
+   "attributes": {
+    "timestamp": "2026-10-27T13:03:00.000Z",
+    "supportId": "4f87c14fb4ec56f7a0c6277096e53c68",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Ring twice, 2nd floor (flat 4B)"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "GB",
+     "ip": "192.0.2.21",
+     "port": 40015
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4177/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4177/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "87d921ee-d5be-5d59-8eca-a07212e76e28",
+   "attributes": {
+    "timestamp": "2026-10-22T16:07:00.000Z",
+    "supportId": "da90da7446195a94ae61119886135cb4",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Please leave it at the back door; thanks"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "DE",
+     "ip": "192.0.2.22",
+     "port": 40016
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4184/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4184/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "cb13571c-e472-57b2-9641-0bfd55d51041",
+   "attributes": {
+    "timestamp": "2026-10-22T16:07:01.000Z",
+    "supportId": "886cc2e83af2569d89628c3da52ba21b",
+    "action": "LOGGED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "staging",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Please leave it at the back door; thanks"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "DE",
+     "ip": "192.0.2.22",
+     "port": 40017
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4184/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4184/notes HTTP/1.1",
+     "statusCode": 201
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "eea5452d-a27a-52a7-b5b9-696ce53689d2",
+   "attributes": {
+    "timestamp": "2026-10-23T10:40:00.000Z",
+    "supportId": "c329982ed5a4595c934fee27c8d7a24b",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Deliver after 5 o'clock -- call first"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "IN",
+     "ip": "192.0.2.23",
+     "port": 40018
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4191/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4191/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "b0c03808-758e-5b83-ae84-0ba938c95642",
+   "attributes": {
+    "timestamp": "2026-10-24T16:03:00.000Z",
+    "supportId": "00db6c27257254f69c445d9ebf27730d",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Gift: don't include the invoice"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "SA",
+     "ip": "192.0.2.24",
+     "port": 40019
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4198/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4198/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "cb79ef41-ace1-503b-b562-2c6bfef44926",
+   "attributes": {
+    "timestamp": "2026-10-25T16:37:00.000Z",
+    "supportId": "8073bb6a846c58f6bce0af359ff7fe71",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Ring twice, 2nd floor (flat 4B)"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "AE",
+     "ip": "192.0.2.25",
+     "port": 40020
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4205/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4205/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "63f0f837-8ee3-5b66-8a01-22a857656b4e",
+   "attributes": {
+    "timestamp": "2026-10-25T16:37:01.000Z",
+    "supportId": "a438061abb455ece811b1f754a2d1cf1",
+    "action": "LOGGED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "staging",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Ring twice, 2nd floor (flat 4B)"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "AE",
+     "ip": "192.0.2.25",
+     "port": 40021
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4205/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4205/notes HTTP/1.1",
+     "statusCode": 201
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "9e4c598a-e96b-5768-b66a-c4c4e77c9ffb",
+   "attributes": {
+    "timestamp": "2026-10-26T13:03:00.000Z",
+    "supportId": "b99f9e9bdfe0560984af042e224d8d05",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Please leave it at the back door; thanks"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "GB",
+     "ip": "192.0.2.26",
+     "port": 40022
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4212/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4212/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "5f9ce67f-514c-5fd6-a621-2277982e897c",
+   "attributes": {
+    "timestamp": "2026-10-27T10:02:00.000Z",
+    "supportId": "9ca05e8592d15f389ebe23e430d453ad",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Deliver after 5 o'clock -- call first"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "DE",
+     "ip": "192.0.2.27",
+     "port": 40023
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4219/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4219/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "fb8b2030-15ce-596d-9b60-9cbe781c3cb3",
+   "attributes": {
+    "timestamp": "2026-10-22T15:54:00.000Z",
+    "supportId": "83dae82d73445346bd749703d7e149d2",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Gift: don't include the invoice"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "IN",
+     "ip": "192.0.2.28",
+     "port": 40024
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4226/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4226/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "7f05c596-df80-5084-91ad-0082e286972c",
+   "attributes": {
+    "timestamp": "2026-10-22T15:54:01.000Z",
+    "supportId": "0cafc203daa852858e4e4bc5f220ea96",
+    "action": "LOGGED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "staging",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Gift: don't include the invoice"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "IN",
+     "ip": "192.0.2.28",
+     "port": 40025
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4226/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4226/notes HTTP/1.1",
+     "statusCode": 201
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "cba8ec7b-e4ee-5a98-a253-650a650809ff",
+   "attributes": {
+    "timestamp": "2026-10-23T09:18:00.000Z",
+    "supportId": "cce82cda78565027bbc1e065634177d7",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Ring twice, 2nd floor (flat 4B)"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "SA",
+     "ip": "192.0.2.29",
+     "port": 40026
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4233/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4233/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "5b724a17-f888-54b9-8b6c-0b6bc508d09d",
+   "attributes": {
+    "timestamp": "2026-10-24T13:09:00.000Z",
+    "supportId": "f4b3ec2bdf7d55339c4c5e7c36de5e24",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Please leave it at the back door; thanks"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "AE",
+     "ip": "192.0.2.30",
+     "port": 40027
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4240/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4240/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "8067be23-eebc-5d45-be28-b46d35b1e53d",
+   "attributes": {
+    "timestamp": "2026-10-25T15:07:00.000Z",
+    "supportId": "d5bb46f97faa58cb8b51d18d09237287",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Deliver after 5 o'clock -- call first"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "GB",
+     "ip": "192.0.2.31",
+     "port": 40028
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4247/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4247/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "f8d9f6d0-d2cc-5614-be62-994ed5766077",
+   "attributes": {
+    "timestamp": "2026-10-25T15:07:01.000Z",
+    "supportId": "912dbd18fb9553d28db15731be81b166",
+    "action": "LOGGED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "staging",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Deliver after 5 o'clock -- call first"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "GB",
+     "ip": "192.0.2.31",
+     "port": 40029
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4247/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4247/notes HTTP/1.1",
+     "statusCode": 201
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "8f16a3b3-69e3-55e0-92f1-7906dacf6038",
+   "attributes": {
+    "timestamp": "2026-10-26T16:19:00.000Z",
+    "supportId": "7c825884dbf85b0cb0f0a41d5dc47d45",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Gift: don't include the invoice"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "DE",
+     "ip": "192.0.2.32",
+     "port": 40030
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4254/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4254/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "f21d60e8-9b07-568e-9256-e523ceabf236",
+   "attributes": {
+    "timestamp": "2026-10-27T15:52:00.000Z",
+    "supportId": "030d845bc4b954e7b369cd7f5d22ee32",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Ring twice, 2nd floor (flat 4B)"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "IN",
+     "ip": "192.0.2.33",
+     "port": 40031
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4261/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4261/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "2eda37a8-4b99-5942-9792-925f068a6f0f",
+   "attributes": {
+    "timestamp": "2026-10-22T09:06:00.000Z",
+    "supportId": "28eafba4610056c2805c08f42a427dfa",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Please leave it at the back door; thanks"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "SA",
+     "ip": "192.0.2.34",
+     "port": 40032
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4268/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4268/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "dcb2f4d5-45d9-5bf5-948a-6d52b302b9b2",
+   "attributes": {
+    "timestamp": "2026-10-22T09:06:01.000Z",
+    "supportId": "451eb1dd5fa0541688afa73f179482aa",
+    "action": "LOGGED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "staging",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Please leave it at the back door; thanks"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "SA",
+     "ip": "192.0.2.34",
+     "port": 40033
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4268/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4268/notes HTTP/1.1",
+     "statusCode": 201
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "34551d53-15da-5a95-afff-046441ca8062",
+   "attributes": {
+    "timestamp": "2026-10-23T16:36:00.000Z",
+    "supportId": "281254cc759e5c0997556837f4b3f940",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Deliver after 5 o'clock -- call first"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "AE",
+     "ip": "192.0.2.35",
+     "port": 40034
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4275/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4275/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "f098b25f-ab28-5d4a-adb3-44c3c1ad0953",
+   "attributes": {
+    "timestamp": "2026-10-24T10:23:00.000Z",
+    "supportId": "eadaf8f7974156b995af47c9a507668f",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Gift: don't include the invoice"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "GB",
+     "ip": "192.0.2.36",
+     "port": 40035
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4282/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4282/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "53c41245-db9f-507c-b557-22ad4a3e74ac",
+   "attributes": {
+    "timestamp": "2026-10-25T08:35:00.000Z",
+    "supportId": "2961b51f4bbb592b8d1a830ad163f982",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Ring twice, 2nd floor (flat 4B)"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "DE",
+     "ip": "192.0.2.37",
+     "port": 40036
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4289/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4289/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "5590b5a3-2dbc-54b5-aa0f-35fa08a097f6",
+   "attributes": {
+    "timestamp": "2026-10-25T08:35:01.000Z",
+    "supportId": "67f8a4dd23bc5f77b0169130500abf80",
+    "action": "LOGGED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "staging",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Ring twice, 2nd floor (flat 4B)"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "DE",
+     "ip": "192.0.2.37",
+     "port": 40037
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4289/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4289/notes HTTP/1.1",
+     "statusCode": 201
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "6e692364-b101-5698-b56d-7fa4a79d89ed",
+   "attributes": {
+    "timestamp": "2026-10-26T08:36:00.000Z",
+    "supportId": "8b54f5695831572b99917293c662955f",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Please leave it at the back door; thanks"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "IN",
+     "ip": "192.0.2.10",
+     "port": 40038
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4296/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4296/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "c84ea0ed-b4b7-5d41-864b-48445a68fb65",
+   "attributes": {
+    "timestamp": "2026-10-27T07:39:00.000Z",
+    "supportId": "0e6854b999ad5703bba1ad5d7497a20d",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Deliver after 5 o'clock -- call first"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "SA",
+     "ip": "192.0.2.11",
+     "port": 40039
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4303/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4303/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "4c2f0ddb-7913-5957-8aa2-dcf1262f80a3",
+   "attributes": {
+    "timestamp": "2026-10-22T10:31:00.000Z",
+    "supportId": "35caa4a5780655ea9a14c45daa9a9a65",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Gift: don't include the invoice"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "AE",
+     "ip": "192.0.2.12",
+     "port": 40040
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4310/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4310/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "55ee20d1-457f-5221-8943-0a98e0c2bf6c",
+   "attributes": {
+    "timestamp": "2026-10-22T10:31:01.000Z",
+    "supportId": "07bbdf3c99d45d2097700a9d34f7efc5",
+    "action": "LOGGED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "staging",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Gift: don't include the invoice"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "AE",
+     "ip": "192.0.2.12",
+     "port": 40041
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4310/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4310/notes HTTP/1.1",
+     "statusCode": 201
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "b0510355-0db1-5d97-b22e-edefd660aea7",
+   "attributes": {
+    "timestamp": "2026-10-23T15:27:00.000Z",
+    "supportId": "8bedb17788c152bd945f2c2cb48da3eb",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Ring twice, 2nd floor (flat 4B)"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "GB",
+     "ip": "192.0.2.13",
+     "port": 40042
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4317/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4317/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "716279e9-f105-5e52-8231-0d9410862bd4",
+   "attributes": {
+    "timestamp": "2026-10-24T12:29:00.000Z",
+    "supportId": "5e69eab20df452babed66ee8a729a71b",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Please leave it at the back door; thanks"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "DE",
+     "ip": "192.0.2.14",
+     "port": 40043
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4324/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4324/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "8e6cc6ba-65f6-51a5-9729-cef6d04db8b6",
+   "attributes": {
+    "timestamp": "2026-10-25T16:59:00.000Z",
+    "supportId": "6458ae85fd965928b6d581e3beba3f12",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Deliver after 5 o'clock -- call first"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "IN",
+     "ip": "192.0.2.15",
+     "port": 40044
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4331/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4331/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "ccbe5e2b-4614-541d-8f90-ab86c1032cba",
+   "attributes": {
+    "timestamp": "2026-10-25T16:59:01.000Z",
+    "supportId": "7894d1a041cb55f9a38397465804c992",
+    "action": "LOGGED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "staging",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Deliver after 5 o'clock -- call first"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "IN",
+     "ip": "192.0.2.15",
+     "port": 40045
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4331/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4331/notes HTTP/1.1",
+     "statusCode": 201
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "ff6d4760-42b5-5a50-9cd1-9955342c42f5",
+   "attributes": {
+    "timestamp": "2026-10-26T14:23:00.000Z",
+    "supportId": "0b67d9ea8e815115ac2439a635bac9b4",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Gift: don't include the invoice"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "SA",
+     "ip": "192.0.2.16",
+     "port": 40046
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4338/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4338/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "81d7611e-5672-5fd2-8199-e49ed376427a",
+   "attributes": {
+    "timestamp": "2026-10-27T11:15:00.000Z",
+    "supportId": "aab2a8077f165a97a8d4c766a82fa4ab",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 942100,
+      "name": "SQL Injection Attack Detected via libinjection",
+      "matchedData": {
+       "status": "ENABLED",
+       "value": "Ring twice, 2nd floor (flat 4B)"
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "AE",
+     "ip": "192.0.2.17",
+     "port": 40047
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/orders/4345/notes",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/orders/4345/notes HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "08a8e130-8d6f-56a5-babc-ac7f7ac5b44b",
+   "attributes": {
+    "timestamp": "2026-10-24T07:00:00.000Z",
+    "supportId": "24917f85030c50369219851c95d0a11c",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 930130,
+      "name": "Restricted File Access Attempt",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "NL",
+     "ip": "198.51.100.7",
+     "port": 40048
+    },
+    "request": {
+     "method": "GET",
+     "path": "/.env",
+     "headers": [
+      "Accept: */*",
+      "Host: portal.contoso.com",
+      "User-Agent: Mozilla/5.0 zgrab/0.x",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "GET /.env HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "46e7fddd-d31c-5ab1-9fe0-f2f8c58a82de",
+   "attributes": {
+    "timestamp": "2026-10-24T07:01:00.000Z",
+    "supportId": "97793a84c0c655d9ab22439d3cfc6972",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 930130,
+      "name": "Restricted File Access Attempt",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     },
+     {
+      "modSecId": 932160,
+      "name": "Remote Command Execution: Unix Shell Code Found",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "NL",
+     "ip": "198.51.100.8",
+     "port": 40049
+    },
+    "request": {
+     "method": "GET",
+     "path": "/.git/config",
+     "headers": [
+      "Accept: */*",
+      "Host: portal.contoso.com",
+      "User-Agent: Mozilla/5.0 zgrab/0.x",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "GET /.git/config HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "f84cd3bc-a840-59f7-b97b-1fa64c64047d",
+   "attributes": {
+    "timestamp": "2026-10-24T07:02:00.000Z",
+    "supportId": "e3792b04c9705eb5ac1253d0ef6d7290",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 930130,
+      "name": "Restricted File Access Attempt",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "NL",
+     "ip": "198.51.100.7",
+     "port": 40050
+    },
+    "request": {
+     "method": "GET",
+     "path": "/wp-config.php.bak",
+     "headers": [
+      "Accept: */*",
+      "Host: portal.contoso.com",
+      "User-Agent: Mozilla/5.0 zgrab/0.x",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "GET /wp-config.php.bak HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "9fefd1d9-7c29-5b3a-8546-0f85ea89ee31",
+   "attributes": {
+    "timestamp": "2026-10-24T07:03:00.000Z",
+    "supportId": "1edad4f93a015865bd7a69d97c2a2a15",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 930130,
+      "name": "Restricted File Access Attempt",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     },
+     {
+      "modSecId": 932160,
+      "name": "Remote Command Execution: Unix Shell Code Found",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "NL",
+     "ip": "198.51.100.8",
+     "port": 40051
+    },
+    "request": {
+     "method": "GET",
+     "path": "/.aws/credentials",
+     "headers": [
+      "Accept: */*",
+      "Host: portal.contoso.com",
+      "User-Agent: Mozilla/5.0 zgrab/0.x",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "GET /.aws/credentials HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "b21325fa-6874-5de6-b8f4-f3a4209b1de7",
+   "attributes": {
+    "timestamp": "2026-10-24T07:04:00.000Z",
+    "supportId": "e31f7320ca865281ba53d92214e2a982",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 930130,
+      "name": "Restricted File Access Attempt",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "NL",
+     "ip": "198.51.100.7",
+     "port": 40052
+    },
+    "request": {
+     "method": "GET",
+     "path": "/server/.env",
+     "headers": [
+      "Accept: */*",
+      "Host: portal.contoso.com",
+      "User-Agent: Mozilla/5.0 zgrab/0.x",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "GET /server/.env HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "21b1e210-f9e7-5a4b-9d0b-89c322aec626",
+   "attributes": {
+    "timestamp": "2026-10-24T07:05:00.000Z",
+    "supportId": "c0962cd5bed651b3b0d98eb76c9edf5a",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 930130,
+      "name": "Restricted File Access Attempt",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     },
+     {
+      "modSecId": 932160,
+      "name": "Remote Command Execution: Unix Shell Code Found",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "NL",
+     "ip": "198.51.100.8",
+     "port": 40053
+    },
+    "request": {
+     "method": "GET",
+     "path": "/config/.env",
+     "headers": [
+      "Accept: */*",
+      "Host: portal.contoso.com",
+      "User-Agent: Mozilla/5.0 zgrab/0.x",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "GET /config/.env HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "80e643d6-fc4d-596a-9e08-30421c3d1402",
+   "attributes": {
+    "timestamp": "2026-10-24T07:06:00.000Z",
+    "supportId": "0e0d6fcf512752e2bdf2425bed64de1d",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 930130,
+      "name": "Restricted File Access Attempt",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "NL",
+     "ip": "198.51.100.7",
+     "port": 40054
+    },
+    "request": {
+     "method": "GET",
+     "path": "/.env",
+     "headers": [
+      "Accept: */*",
+      "Host: portal.contoso.com",
+      "User-Agent: Mozilla/5.0 zgrab/0.x",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "GET /.env HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "cec99559-81e3-5b81-a740-2547b9d34221",
+   "attributes": {
+    "timestamp": "2026-10-24T07:07:00.000Z",
+    "supportId": "b7d7465ccd1e583198b578dd76e951a5",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 930130,
+      "name": "Restricted File Access Attempt",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     },
+     {
+      "modSecId": 932160,
+      "name": "Remote Command Execution: Unix Shell Code Found",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "NL",
+     "ip": "198.51.100.8",
+     "port": 40055
+    },
+    "request": {
+     "method": "GET",
+     "path": "/.git/config",
+     "headers": [
+      "Accept: */*",
+      "Host: portal.contoso.com",
+      "User-Agent: Mozilla/5.0 zgrab/0.x",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "GET /.git/config HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "6971468f-33b5-58cc-a235-980eae334e11",
+   "attributes": {
+    "timestamp": "2026-10-24T07:08:00.000Z",
+    "supportId": "74803fbf2f1454a4b292727ff1c79210",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 930130,
+      "name": "Restricted File Access Attempt",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "NL",
+     "ip": "198.51.100.7",
+     "port": 40056
+    },
+    "request": {
+     "method": "GET",
+     "path": "/wp-config.php.bak",
+     "headers": [
+      "Accept: */*",
+      "Host: portal.contoso.com",
+      "User-Agent: Mozilla/5.0 zgrab/0.x",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "GET /wp-config.php.bak HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "db18b774-9094-53a6-9762-fd3956b3c1ae",
+   "attributes": {
+    "timestamp": "2026-10-24T07:09:00.000Z",
+    "supportId": "499797fdda905b9cb1c3518c8d46398c",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 930130,
+      "name": "Restricted File Access Attempt",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     },
+     {
+      "modSecId": 932160,
+      "name": "Remote Command Execution: Unix Shell Code Found",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "NL",
+     "ip": "198.51.100.8",
+     "port": 40057
+    },
+    "request": {
+     "method": "GET",
+     "path": "/.aws/credentials",
+     "headers": [
+      "Accept: */*",
+      "Host: portal.contoso.com",
+      "User-Agent: Mozilla/5.0 zgrab/0.x",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "GET /.aws/credentials HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "5d90358f-fc0b-5554-83c0-d7efe9de18a6",
+   "attributes": {
+    "timestamp": "2026-10-24T07:10:00.000Z",
+    "supportId": "28436cbbc88f5f2587cae0539e214bef",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 930130,
+      "name": "Restricted File Access Attempt",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "NL",
+     "ip": "198.51.100.7",
+     "port": 40058
+    },
+    "request": {
+     "method": "GET",
+     "path": "/server/.env",
+     "headers": [
+      "Accept: */*",
+      "Host: portal.contoso.com",
+      "User-Agent: Mozilla/5.0 zgrab/0.x",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "GET /server/.env HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "ac4a76dc-e053-53b9-9df6-66e3a737456b",
+   "attributes": {
+    "timestamp": "2026-10-24T07:11:00.000Z",
+    "supportId": "328dc34ede2456b8a63a0fac6ab26a29",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 930130,
+      "name": "Restricted File Access Attempt",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     },
+     {
+      "modSecId": 932160,
+      "name": "Remote Command Execution: Unix Shell Code Found",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "NL",
+     "ip": "198.51.100.8",
+     "port": 40059
+    },
+    "request": {
+     "method": "GET",
+     "path": "/config/.env",
+     "headers": [
+      "Accept: */*",
+      "Host: portal.contoso.com",
+      "User-Agent: Mozilla/5.0 zgrab/0.x",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "GET /config/.env HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "46ef453c-6ff3-5a11-8bf2-d869c70a2cd8",
+   "attributes": {
+    "timestamp": "2026-10-24T07:12:00.000Z",
+    "supportId": "332299a9fdc75c4fb3ab5c059b82068e",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 930130,
+      "name": "Restricted File Access Attempt",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "NL",
+     "ip": "198.51.100.7",
+     "port": 40060
+    },
+    "request": {
+     "method": "GET",
+     "path": "/.env",
+     "headers": [
+      "Accept: */*",
+      "Host: portal.contoso.com",
+      "User-Agent: Mozilla/5.0 zgrab/0.x",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "GET /.env HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "75dc59b2-a3de-51f5-88b4-45789e655a81",
+   "attributes": {
+    "timestamp": "2026-10-24T07:13:00.000Z",
+    "supportId": "b7a6cf1f07ce5d2aba96cac40e3b3f96",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 930130,
+      "name": "Restricted File Access Attempt",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     },
+     {
+      "modSecId": 932160,
+      "name": "Remote Command Execution: Unix Shell Code Found",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "NL",
+     "ip": "198.51.100.8",
+     "port": 40061
+    },
+    "request": {
+     "method": "GET",
+     "path": "/.git/config",
+     "headers": [
+      "Accept: */*",
+      "Host: portal.contoso.com",
+      "User-Agent: Mozilla/5.0 zgrab/0.x",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "GET /.git/config HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "a600748f-7cdd-550c-8f93-26e4d8921492",
+   "attributes": {
+    "timestamp": "2026-10-24T07:14:00.000Z",
+    "supportId": "081ee46d47d3539484c1c02c4e4eb6c2",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 930130,
+      "name": "Restricted File Access Attempt",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "NL",
+     "ip": "198.51.100.7",
+     "port": 40062
+    },
+    "request": {
+     "method": "GET",
+     "path": "/wp-config.php.bak",
+     "headers": [
+      "Accept: */*",
+      "Host: portal.contoso.com",
+      "User-Agent: Mozilla/5.0 zgrab/0.x",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "GET /wp-config.php.bak HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "fa380c61-91a6-55ca-b933-771b3c44379d",
+   "attributes": {
+    "timestamp": "2026-10-24T07:15:00.000Z",
+    "supportId": "8b97ae6b59f65808b470eb9868426cfd",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 930130,
+      "name": "Restricted File Access Attempt",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     },
+     {
+      "modSecId": 932160,
+      "name": "Remote Command Execution: Unix Shell Code Found",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "NL",
+     "ip": "198.51.100.8",
+     "port": 40063
+    },
+    "request": {
+     "method": "GET",
+     "path": "/.aws/credentials",
+     "headers": [
+      "Accept: */*",
+      "Host: portal.contoso.com",
+      "User-Agent: Mozilla/5.0 zgrab/0.x",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "GET /.aws/credentials HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "c6422b40-1c82-5519-ad22-035a2538240e",
+   "attributes": {
+    "timestamp": "2026-10-24T07:16:00.000Z",
+    "supportId": "6ed576faf5c853f984aea037e349c661",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 930130,
+      "name": "Restricted File Access Attempt",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "NL",
+     "ip": "198.51.100.7",
+     "port": 40064
+    },
+    "request": {
+     "method": "GET",
+     "path": "/server/.env",
+     "headers": [
+      "Accept: */*",
+      "Host: portal.contoso.com",
+      "User-Agent: Mozilla/5.0 zgrab/0.x",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "GET /server/.env HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "65bcc333-0116-529e-8f2f-2fa46760496b",
+   "attributes": {
+    "timestamp": "2026-10-24T07:17:00.000Z",
+    "supportId": "2b06df4b6b805bf3ad17a558de5d8ec4",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 930130,
+      "name": "Restricted File Access Attempt",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     },
+     {
+      "modSecId": 932160,
+      "name": "Remote Command Execution: Unix Shell Code Found",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "NL",
+     "ip": "198.51.100.8",
+     "port": 40065
+    },
+    "request": {
+     "method": "GET",
+     "path": "/config/.env",
+     "headers": [
+      "Accept: */*",
+      "Host: portal.contoso.com",
+      "User-Agent: Mozilla/5.0 zgrab/0.x",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "GET /config/.env HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "90dbc873-5438-50f9-9906-baff91f5ba5e",
+   "attributes": {
+    "timestamp": "2026-10-24T07:18:00.000Z",
+    "supportId": "9aa415c1ab5a5802a97de21d0ee261e9",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 930130,
+      "name": "Restricted File Access Attempt",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "NL",
+     "ip": "198.51.100.7",
+     "port": 40066
+    },
+    "request": {
+     "method": "GET",
+     "path": "/.env",
+     "headers": [
+      "Accept: */*",
+      "Host: portal.contoso.com",
+      "User-Agent: Mozilla/5.0 zgrab/0.x",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "GET /.env HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "ffbcd6bc-8ec2-521b-afb7-67fc13af464a",
+   "attributes": {
+    "timestamp": "2026-10-24T07:19:00.000Z",
+    "supportId": "5b8aab2e8bc6598caa706e4726aee678",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 930130,
+      "name": "Restricted File Access Attempt",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     },
+     {
+      "modSecId": 932160,
+      "name": "Remote Command Execution: Unix Shell Code Found",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "NL",
+     "ip": "198.51.100.8",
+     "port": 40067
+    },
+    "request": {
+     "method": "GET",
+     "path": "/.git/config",
+     "headers": [
+      "Accept: */*",
+      "Host: portal.contoso.com",
+      "User-Agent: Mozilla/5.0 zgrab/0.x",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "GET /.git/config HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "0d70c406-6cc6-5d2c-beb5-ba37e3136851",
+   "attributes": {
+    "timestamp": "2026-10-24T07:20:00.000Z",
+    "supportId": "d3f02215e763592caba9f1726faab99d",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 930130,
+      "name": "Restricted File Access Attempt",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "NL",
+     "ip": "198.51.100.7",
+     "port": 40068
+    },
+    "request": {
+     "method": "GET",
+     "path": "/wp-config.php.bak",
+     "headers": [
+      "Accept: */*",
+      "Host: portal.contoso.com",
+      "User-Agent: Mozilla/5.0 zgrab/0.x",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "GET /wp-config.php.bak HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "f243e744-bd95-5eba-a301-26545625e95f",
+   "attributes": {
+    "timestamp": "2026-10-24T07:21:00.000Z",
+    "supportId": "cc9c6bf48bd753fc93905a0dc016845d",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 930130,
+      "name": "Restricted File Access Attempt",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     },
+     {
+      "modSecId": 932160,
+      "name": "Remote Command Execution: Unix Shell Code Found",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "NL",
+     "ip": "198.51.100.8",
+     "port": 40069
+    },
+    "request": {
+     "method": "GET",
+     "path": "/.aws/credentials",
+     "headers": [
+      "Accept: */*",
+      "Host: portal.contoso.com",
+      "User-Agent: Mozilla/5.0 zgrab/0.x",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "GET /.aws/credentials HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "e349f961-40ad-5ec3-924e-ddfefb7d6a20",
+   "attributes": {
+    "timestamp": "2026-10-24T07:22:00.000Z",
+    "supportId": "76f0c6d1425951379c5472deaa6c12b4",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 930130,
+      "name": "Restricted File Access Attempt",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "NL",
+     "ip": "198.51.100.7",
+     "port": 40070
+    },
+    "request": {
+     "method": "GET",
+     "path": "/server/.env",
+     "headers": [
+      "Accept: */*",
+      "Host: portal.contoso.com",
+      "User-Agent: Mozilla/5.0 zgrab/0.x",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "GET /server/.env HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "984e0904-b8f6-5ad0-9b08-5bc8cb14d197",
+   "attributes": {
+    "timestamp": "2026-10-24T07:23:00.000Z",
+    "supportId": "d972da47709b54b39c68c1b1126dbe4b",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 930130,
+      "name": "Restricted File Access Attempt",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     },
+     {
+      "modSecId": 932160,
+      "name": "Remote Command Execution: Unix Shell Code Found",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "NL",
+     "ip": "198.51.100.8",
+     "port": 40071
+    },
+    "request": {
+     "method": "GET",
+     "path": "/config/.env",
+     "headers": [
+      "Accept: */*",
+      "Host: portal.contoso.com",
+      "User-Agent: Mozilla/5.0 zgrab/0.x",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "GET /config/.env HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "a9b03aa8-c222-5f64-9f25-86291b8c0c2a",
+   "attributes": {
+    "timestamp": "2026-10-26T07:00:00.000Z",
+    "supportId": "cbda8088beea518f936cdd86de81e7ef",
+    "action": "LOGGED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 941100,
+      "name": "XSS Attack Detected via libinjection",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "GB",
+     "ip": "192.0.2.200",
+     "port": 40072
+    },
+    "request": {
+     "method": "POST",
+     "path": "/comments",
+     "headers": [
+      "Accept: */*",
+      "Host: blog.contoso.com",
+      "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /comments HTTP/1.1",
+     "statusCode": 200
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "bbfb8c28-510b-554a-9a84-c9d8086940a3"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "777e3f50-15e9-50df-99a3-140489a73843",
+   "attributes": {
+    "timestamp": "2026-10-26T08:00:00.000Z",
+    "supportId": "38e206ee612450e2bbb80b0a216bdbd9",
+    "action": "LOGGED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 941100,
+      "name": "XSS Attack Detected via libinjection",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     },
+     {
+      "modSecId": 941160,
+      "name": "NoScript XSS InjectionChecker: HTML Injection",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "GB",
+     "ip": "192.0.2.201",
+     "port": 40073
+    },
+    "request": {
+     "method": "POST",
+     "path": "/comments",
+     "headers": [
+      "Accept: */*",
+      "Host: blog.contoso.com",
+      "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /comments HTTP/1.1",
+     "statusCode": 200
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "bbfb8c28-510b-554a-9a84-c9d8086940a3"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "5f2424b6-3b9b-5ab6-8b0f-c8bb36847bc1",
+   "attributes": {
+    "timestamp": "2026-10-26T09:00:00.000Z",
+    "supportId": "dc11f35c01e25980b848b1455294e1c8",
+    "action": "LOGGED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 941100,
+      "name": "XSS Attack Detected via libinjection",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "GB",
+     "ip": "192.0.2.202",
+     "port": 40074
+    },
+    "request": {
+     "method": "POST",
+     "path": "/comments",
+     "headers": [
+      "Accept: */*",
+      "Host: blog.contoso.com",
+      "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /comments HTTP/1.1",
+     "statusCode": 200
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "bbfb8c28-510b-554a-9a84-c9d8086940a3"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "b8ff05a3-0aba-5486-b7ca-9af9e7307318",
+   "attributes": {
+    "timestamp": "2026-10-26T10:00:00.000Z",
+    "supportId": "d033b64a3f875be3842aa7fb608ea0a0",
+    "action": "LOGGED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 941100,
+      "name": "XSS Attack Detected via libinjection",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     },
+     {
+      "modSecId": 941160,
+      "name": "NoScript XSS InjectionChecker: HTML Injection",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "GB",
+     "ip": "192.0.2.200",
+     "port": 40075
+    },
+    "request": {
+     "method": "POST",
+     "path": "/comments",
+     "headers": [
+      "Accept: */*",
+      "Host: blog.contoso.com",
+      "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /comments HTTP/1.1",
+     "statusCode": 200
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "bbfb8c28-510b-554a-9a84-c9d8086940a3"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "6625adbb-ae26-5096-b2e2-dc2868d81f18",
+   "attributes": {
+    "timestamp": "2026-10-26T11:00:00.000Z",
+    "supportId": "5286d4cdcd705b39b380f236f4092181",
+    "action": "LOGGED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 941100,
+      "name": "XSS Attack Detected via libinjection",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "GB",
+     "ip": "192.0.2.201",
+     "port": 40076
+    },
+    "request": {
+     "method": "POST",
+     "path": "/comments",
+     "headers": [
+      "Accept: */*",
+      "Host: blog.contoso.com",
+      "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /comments HTTP/1.1",
+     "statusCode": 200
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "bbfb8c28-510b-554a-9a84-c9d8086940a3"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "9f7f93f9-f620-5385-9396-fe945ff8382f",
+   "attributes": {
+    "timestamp": "2026-10-26T12:00:00.000Z",
+    "supportId": "749b32f312ef5a4494684e5881a393d2",
+    "action": "LOGGED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 941100,
+      "name": "XSS Attack Detected via libinjection",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     },
+     {
+      "modSecId": 941160,
+      "name": "NoScript XSS InjectionChecker: HTML Injection",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "GB",
+     "ip": "192.0.2.202",
+     "port": 40077
+    },
+    "request": {
+     "method": "POST",
+     "path": "/comments",
+     "headers": [
+      "Accept: */*",
+      "Host: blog.contoso.com",
+      "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /comments HTTP/1.1",
+     "statusCode": 200
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "bbfb8c28-510b-554a-9a84-c9d8086940a3"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "ba4d63fe-23b5-52bc-8ec8-7d5aa54ef1e5",
+   "attributes": {
+    "timestamp": "2026-10-26T13:00:00.000Z",
+    "supportId": "2636ac224de45a9a9319fb242797ee9a",
+    "action": "LOGGED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 941100,
+      "name": "XSS Attack Detected via libinjection",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "GB",
+     "ip": "192.0.2.200",
+     "port": 40078
+    },
+    "request": {
+     "method": "POST",
+     "path": "/comments",
+     "headers": [
+      "Accept: */*",
+      "Host: blog.contoso.com",
+      "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /comments HTTP/1.1",
+     "statusCode": 200
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "bbfb8c28-510b-554a-9a84-c9d8086940a3"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "c21d837f-0d63-5a3f-8103-531e9b9eea2b",
+   "attributes": {
+    "timestamp": "2026-10-22T10:00:00.000Z",
+    "supportId": "77580b2a5fdb5c1b92fa1f2933dcaf4a",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 920420,
+      "name": "Request content type is not allowed by policy",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "SE",
+     "ip": "203.0.113.77",
+     "port": 40079
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/partner/feed",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: PartnerSync/2.3",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/partner/feed HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "71244406-9997-5d37-aca8-6e4c5c7461cf",
+   "attributes": {
+    "timestamp": "2026-10-23T10:00:00.000Z",
+    "supportId": "7c9a04c5835b5f958ad8627c3769fd9a",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 920420,
+      "name": "Request content type is not allowed by policy",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "SE",
+     "ip": "203.0.113.77",
+     "port": 40080
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/partner/feed",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: PartnerSync/2.3",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/partner/feed HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "4ef72a3a-a588-56fd-81b7-acb25cd935b1",
+   "attributes": {
+    "timestamp": "2026-10-24T10:00:00.000Z",
+    "supportId": "f61c8540a84e56849710ba1f9d12ed1b",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 920420,
+      "name": "Request content type is not allowed by policy",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "SE",
+     "ip": "203.0.113.77",
+     "port": 40081
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/partner/feed",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: PartnerSync/2.3",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/partner/feed HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  },
+  {
+   "type": "WAF_EVENT",
+   "id": "e994f6e7-049c-5fee-875a-de88050c2421",
+   "attributes": {
+    "timestamp": "2026-10-25T10:00:00.000Z",
+    "supportId": "085fc8d8010e530684ffad113241c367",
+    "action": "BLOCKED",
+    "tpc": "FRA",
+    "destinationIp": "203.0.113.10",
+    "instance": "main",
+    "rules": [
+     {
+      "modSecId": 920420,
+      "name": "Request content type is not allowed by policy",
+      "matchedData": {
+       "status": "DISABLED",
+       "value": null
+      }
+     }
+    ],
+    "source": {
+     "countryCode": "SE",
+     "ip": "203.0.113.77",
+     "port": 40082
+    },
+    "request": {
+     "method": "POST",
+     "path": "/api/v1/partner/feed",
+     "headers": [
+      "Accept: */*",
+      "Host: api.contoso.com",
+      "User-Agent: PartnerSync/2.3",
+      "Cookie: session=secret"
+     ],
+     "messageHeader": "POST /api/v1/partner/feed HTTP/1.1",
+     "statusCode": 403
+    }
+   },
+   "relationships": {
+    "belongsTo": {
+     "data": {
+      "type": "TRAFFIC_CONFIG",
+      "id": "d32dac0d-1862-56eb-ad5a-110ebde05bb7"
+     }
+    }
+   }
+  }
+ ]
+}

@@ -18,8 +18,9 @@ from cryptography.hazmat.primitives import hashes, serialization
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
-from . import auth, f5, findings, jobs, report, sources, tls, vault
-from .models import AuditLog, Endpoint, Finding, Job, Listener, Source, SourceConfig, WafPolicy, connect, get_setting, put_setting
+from . import auth, f5, findings, jobs, report, sources, tls, tuning, vault
+from .models import (AuditLog, Endpoint, Finding, Job, Listener, Source, SourceConfig, TuningDecision, WafPolicy, connect, get_setting,
+                     put_setting)
 
 PAGES = {  # table -> (title, filter columns)
     "applications": ("Applications", ["application", "gateway", "vendor", "mode"]),
@@ -28,6 +29,7 @@ PAGES = {  # table -> (title, filter columns)
     "policy_settings": ("Policy settings", ["policy", "setting", "value"]),
     "endpoints": ("API endpoints", ["host", "method", "template", "kind", "mode"]),
     "findings": ("Findings", ["severity", "rule", "subject"]),
+    "tuning": ("Tuning", ["verdict", "proxy", "rule", "path"]),
     "sources": ("Sources", ["source", "status"]),
 }
 PUBLIC = {"/login", "/healthz"}
@@ -210,8 +212,11 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
         elif kind == "f5_ssh":
             method = "SSH · " + ("key" if st.get("ssh_auth") == "key" else "password")
             note = "Host key pinned · read-only tmsh" if st.get("host_key") else "Host key not trusted yet"
+        elif kind == "baffinbay":
+            method, note = "Service account", f"Tenant {st.get('tenant_id', '')}"
         else:
-            method = {"f5_offline": "Offline files", "azure_bundle": "Offline bundle file", "logs": "Access-log files"}.get(kind, kind)
+            method = {"f5_offline": "Offline files", "azure_bundle": "Offline bundle file", "baffinbay_bundle": "Offline bundle file",
+                      "logs": "Access-log files"}.get(kind, kind)
             note = st.get("path", "")
         if job:
             tone, status = "neu", job.status.capitalize()
@@ -224,7 +229,7 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
         else:
             tone, status = "ok", "Working"
         return {"sc": sc, "inv": inv, "job": job, "name": sc.name if sc else inv.name, "badge": "AZ" if kind.startswith("azure") else
-                "LOG" if kind == "logs" else "F5", "title": sources.TYPES[kind][0] if kind in sources.TYPES else kind,
+                "LOG" if kind == "logs" else "BB" if kind.startswith("baffinbay") else "F5", "title": sources.TYPES[kind][0] if kind in sources.TYPES else kind,
                 "method": method, "note": note, "tone": tone, "status": status,
                 "schedule": sources.describe(st.get("schedule"), default) if sc else "Config file",
                 "next": st.get("next_run")}
@@ -340,7 +345,9 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
         with session() as s:
             sc = get_source(s, sid)
             try:
-                return True, *sources.test(cfg, sc, certificate)
+                found = sources.test(cfg, sc, certificate)
+                s.commit()  # a Baffin Bay token issued during the test is kept
+                return True, *found
             except Exception as e:
                 return False, [sources.explain(e, sc)], None
 
@@ -738,6 +745,42 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
             used = [l for l in s.query(Listener) if l.policy_id == pid or any(r.policy_id == pid for r in l.routes)]
             return page(request, "policy.html", active="policies", p=p, used=used,
                         raw=json.dumps(p.raw, indent=2, sort_keys=True)[:200_000])
+
+    @app.get("/tuning", response_class=HTMLResponse)
+    def tuning_page(request: Request, verdict: str = "", support_id: str = ""):
+        with session() as s:
+            hit, rows = tuning.support_lookup(s, support_id) if support_id.strip() else (None, tuning.groups(s))
+            counts = {k: sum(g["verdict"] == k for g in rows) if k else len(rows) for k in ("", "false positive", "unsure", "attack")}
+            approved = sum(g["decision"] == "approved" and g["proposal"] is not None for g in rows)
+            back = "/tuning" + (f"?{request.url.query}" if request.url.query else "")
+            return page(request, "tuning.html", active="tuning", rows=[g for g in rows if not verdict or g["verdict"] == verdict],
+                        counts=counts, verdict=verdict, support_id=support_id, hit=hit, approved=approved, back=back)
+
+    @app.post("/tuning/decide")
+    async def tuning_decide(request: Request):
+        f = await checked_form(request)
+        if f.get("decision") not in ("approved", "rejected", "") or not f.get("key"):
+            raise HTTPException(400)
+        with session() as s:
+            row = s.get(TuningDecision, f.get("key", ""))
+            if f["decision"]:
+                s.merge(TuningDecision(key=f.get("key", ""), decision=f["decision"], user=request.state.user, time=auth._now()))
+            elif row:
+                s.delete(row)
+            audit(s, request, f"tuning {f['decision'] or 'undone'}", f.get("key", ""))
+            s.commit()
+        return RedirectResponse(safe_next(f.get("back")), 303)
+
+    @app.get("/export/tuning-approved.json")
+    def export_tuning_json():
+        with session() as s:
+            return Response(tuning.patch_json(s), media_type=MEDIA["json"],
+                            headers={"Content-Disposition": 'attachment; filename="tuning-approved.json"'})
+
+    @app.get("/export/tuning-approved.tf")
+    def export_tuning_tf():
+        with session() as s:
+            return PlainTextResponse(tuning.terraform(s), headers={"Content-Disposition": 'attachment; filename="tuning-approved.tf"'})
 
     @app.get("/export/report.html", response_class=HTMLResponse)
     def export_report():

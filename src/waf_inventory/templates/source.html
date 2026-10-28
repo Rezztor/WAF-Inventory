@@ -70,7 +70,8 @@
 {% endif %}
 
 {% if sc.type == "azure" %}<p style="margin:0;color:var(--ink-2);max-width:70ch">Reads Application Gateway and Front Door WAF policies, listeners and routes, and optionally their access and firewall logs from Log Analytics. Read-only: nothing is changed in Azure.</p>
-{% elif f5 %}<p style="margin:0;color:var(--ink-2);max-width:70ch">Reads virtual servers, ASM / Advanced WAF policies and their settings from a BIG-IP. Read-only: nothing is changed on the device.</p>{% endif %}
+{% elif f5 %}<p style="margin:0;color:var(--ink-2);max-width:70ch">Reads virtual servers, ASM / Advanced WAF policies and their settings from a BIG-IP. Read-only: nothing is changed on the device.</p>
+{% elif sc.type == "baffinbay" %}<p style="margin:0;color:var(--ink-2);max-width:70ch">Reads the tenant's proxies, their WAF settings and restrictions, and its WAF events for false-positive tuning. Read-only: nothing is changed in Baffin Bay. A new sign-in token can be issued only every 12 hours, so the token is kept here, encrypted.</p>{% endif %}
 
 <form id="main" class="stack" method="post" action="{{ '/sources/new/' ~ sc.type if new else '/sources/' ~ sc.id }}" {{ 'enctype=multipart/form-data' if sc.type == "f5_offline" }} style="gap:16px">
 <input type="hidden" name="csrf" value="{{ csrf }}">

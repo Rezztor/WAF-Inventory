@@ -24,7 +24,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 from sqlalchemy.orm import Session, object_session
 
-from . import azure, f5, vault
+from . import azure, baffinbay, f5, vault
 from .models import Source, SourceConfig
 
 
@@ -74,10 +74,17 @@ TYPES: dict[str, tuple[str, list[Field]]] = {
         Field("password", "Password", "secret", "Stored encrypted on this server."),
         Field("partitions", "Partitions", "list", "Empty: all partitions. Or e.g. Common, DMZ"),
     ]),
+    "baffinbay": ("Baffin Bay · Threat Protection", [
+        Field("tenant_id", "Tenant ID", "text", "Threat Protection portal: the tenant whose proxies and WAF events are read.", True),
+        Field("client_id", "Client ID", "text", "Of a service account with read access, made in the Threat Protection portal.", True),
+        Field("client_secret", "Client secret", "secret", "Shown once when the service account is made. Stored encrypted.", True),
+    ]),
     "f5_offline": ("F5 BIG-IP · Offline files", [
         Field("path", "Or a folder on the server", "text", "Holds bigip.conf and ASM policy exports. Read again on every run.")]),
     "azure_bundle": ("Azure (offline bundle file)", [
         Field("path", "Bundle file on the server", "text", "JSON saved with waf-inv collect --save-raw", True)]),
+    "baffinbay_bundle": ("Baffin Bay (offline bundle file)", [
+        Field("path", "Bundle file on the server", "text", "JSON in the shape of examples/baffinbay/bundle.json", True)]),
     "logs": ("Access logs (files)", [
         Field("path", "Files on the server", "text", "A glob of JSONL or CSV files, e.g. logs/*.jsonl", True)]),
 }
@@ -89,7 +96,7 @@ ZONES = sorted(available_timezones())
 COLLECTION = {"every": "daily", "at": "02:00", "day": 6, "tz": "UTC", "catch_up": True, "retry": True}  # Settings › Data collection
 RETRY = timedelta(minutes=15)
 WARN_DAYS = 30
-PATH_TYPES = {"f5_offline", "azure_bundle", "logs"}
+PATH_TYPES = {"f5_offline", "azure_bundle", "baffinbay_bundle", "logs"}
 UPLOADS = (".conf", ".txt", ".json", ".ucs")
 SECRETS = {f.key for _, fields in TYPES.values() for f in fields if f.kind == "secret"}
 KINDS = {"text": str, "choice": str, "date": str, "list": list, "int": int, "bool": bool}
@@ -151,6 +158,7 @@ def apply_form(sc: SourceConfig, form: dict[str, str], default: dict = COLLECTIO
         if f.kind == "secret":
             if v:
                 vault.put(sc, f.key, v)
+                sc.secrets = [x for x in sc.secrets if x.kind != "access_token"]  # a token issued to the old credentials
             continue
         if f.kind == "list":
             settings[f.key] = [x for x in re.split(r"[\s,]+", v) if x]
@@ -186,6 +194,8 @@ def apply_form(sc: SourceConfig, form: dict[str, str], default: dict = COLLECTIO
         errors += [f"{label} is required" for key, label in (("tenant_id", "Tenant ID"), ("client_id", "Client ID")) if not st.get(key)]
     if sc.type == "azure" and st.get("auth") == "secret" and not have.get("client_secret"):
         errors.append("Client secret is required for client secret sign-in")
+    if sc.type == "baffinbay" and not have.get("client_secret"):
+        errors.append("Client secret is required")
     if sc.type == "f5_rest" and not have.get("password"):
         errors.append("Password is required")
     if sc.type == "f5_ssh" and not have.get("ssh_key" if st.get("ssh_auth") == "key" else "password"):
@@ -289,6 +299,21 @@ def f5_client(sc: SourceConfig, timeout: float = 120) -> f5.F5Client:
                        token=st.get("token", True))
 
 
+def baffinbay_client(sc: SourceConfig) -> baffinbay.Client:
+    secret = vault.get(sc, "client_secret")
+    if not secret:
+        raise ValueError("No client secret saved for this source")
+    tok = secret_state(sc).get("access_token")
+    return baffinbay.Client(sc.settings["client_id"], secret,
+                            token={"access_token": vault.get(sc, "access_token"), "expires": tok["meta"]["expires"]} if tok else None)
+
+
+def keep_token(sc: SourceConfig, c: baffinbay.Client) -> None:
+    """Store a newly issued token: Baffin Bay issues one only every 12 hours."""
+    if c.token and c.token["access_token"] != vault.get(sc, "access_token"):
+        vault.put(sc, "access_token", c.token["access_token"], meta={"expires": c.token["expires"]})
+
+
 def ssh_key(text: str, passphrase: str | None) -> paramiko.PKey:
     import io
     for kind in (paramiko.Ed25519Key, paramiko.ECDSAKey, paramiko.RSAKey):
@@ -365,6 +390,13 @@ def collect(s: Session, cfg: dict, sc: SourceConfig, log: Callable[[str], None])
         for w in warnings:
             log(f"warning: {w}")
         src = {**src, "type": "f5_ssh", "data": data}
+    if sc.type == "baffinbay":
+        from .cli import last_event
+        c = baffinbay_client(sc)
+        try:
+            src["bundle"] = baffinbay.fetch(c, sc.settings["tenant_id"], last_event(s, sc.name))
+        finally:
+            keep_token(sc, c)
     return collect_source(s, cfg, src, credential=credential, password=password, log=log)
 
 
@@ -397,6 +429,14 @@ def test(cfg: dict, sc: SourceConfig, certificate: str = "certificate") -> tuple
             return [f"Signed in to {st['host']}. BIG-IP {f5.device_version(c) or 'version unknown'}."], None
         finally:
             c.logout()
+    if sc.type == "baffinbay":
+        c = baffinbay_client(sc)
+        try:
+            n = len(c.get("/api/v2/traffic-mgmt/traffic-configs", {"filter[tenant]": st["tenant_id"]}).get("data", []))
+            c.get("/api/v2/insight/http-security-events", {"filter[tenantId]": st["tenant_id"], "page[size]": 1})
+        finally:
+            keep_token(sc, c)
+        return [f"Signed in. Tenant {st['tenant_id']}: {n} traffic configuration(s) readable, WAF events readable."], None
     if sc.type == "f5_ssh":
         client, run = ssh_run(sc, timeout=20)
         try:
@@ -455,6 +495,11 @@ def explain(e: Exception, sc: SourceConfig | None = None) -> str:
                 return "401 from the BIG-IP: check the username and password."
             if code == 403:
                 return f"403 from the BIG-IP on {url.path}: the account lacks a role for this. Auditor covers everything read."
+        if url.host == urlsplit(baffinbay.AUTH).hostname:
+            return {429: "Baffin Bay issues a new token only every 12 hours for a service account. Try again later.",
+                    }.get(code, "Baffin Bay sign-in failed: check the client ID and client secret of the service account.")
+        if url.host == urlsplit(baffinbay.API).hostname and code in (401, 403):
+            return f"{code} from Baffin Bay on {url.path}: check the tenant ID, and that the service account may read it."
         if any(url.host == c["logs"].removeprefix("https://") for c in azure.CLOUDS.values()):
             if code == 403:
                 return "No access to the Log Analytics workspace: give the app the Log Analytics Reader role on it."
@@ -587,5 +632,5 @@ def export_toml(s: Session) -> str:
         out += ["[[sources]]", f"name = {_toml(sc.name)}", f"type = {_toml(sc.type)}"]
         out += [f"{k} = {_toml(v)}" for k, v in sc.settings.items()
                 if k not in SKIP and k not in SECRETS and v is not None and (k == "ca_pem" or not k.startswith("ca_"))]
-        out += [f"# {k}: not exported, enter it again in the console" for k in secret_state(sc)] + [""]
+        out += [f"# {k}: not exported, enter it again in the console" for k in secret_state(sc) if k != "access_token"] + [""]
     return "\n".join(out)

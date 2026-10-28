@@ -10,10 +10,11 @@ import os
 import sys
 import tomllib
 from collections.abc import Callable
+from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import azure, discovery, f5, findings, report
-from .models import Endpoint, connect, now, save_snapshot, source
+from . import azure, baffinbay, discovery, f5, findings, report
+from .models import Endpoint, Source, WafEvent, connect, now, put_setting, save_snapshot, source
 
 
 def load_config(path: str) -> dict:
@@ -83,6 +84,16 @@ def collect_source(session, cfg: dict, src: dict, save_raw: str | None = None, c
         gateways, policies = f5.build(f5.only_partitions(src["data"], src.get("partitions", [])))
     elif kind == "f5_offline":
         gateways, policies = f5.build(f5.load_offline(_path(cfg, src["path"])))
+    elif kind in ("baffinbay", "baffinbay_bundle"):  # the console signs in and passes what it read, as f5_ssh does
+        if kind == "baffinbay" and "bundle" not in src:
+            raise ValueError(f"{name}: Baffin Bay connections are collected by the console, not from config.toml")
+        bundle = src["bundle"] if kind == "baffinbay" else json.loads(_path(cfg, src["path"]).read_text())
+        gateways, policies = baffinbay.build(bundle)
+        for crs, rules in (bundle.get("core_rule_sets") or {}).items():  # modSecId -> the rule id exclusions name
+            put_setting(session, f"crs:{crs}", rules)
+        save_snapshot(session, name, kind, gateways, policies)
+        n = store_events(session, name, kind, bundle.get("events", []))
+        return f"{len(gateways)} proxy(ies), {len(policies)} WAF configuration(s), {n} new WAF event(s)"
     elif kind == "logs":
         gateways, policies = None, None
         if not glob.glob(str(_path(cfg, src["path"]))):
@@ -108,6 +119,30 @@ def store_endpoints(session, name: str, kind: str, observations: list[dict], dcf
     src.status, src.error, src.last_run = "ok", None, now()
     session.commit()
     return len(src.endpoints)
+
+
+EVENT_DAYS = 35
+
+
+def store_events(session, name: str, kind: str, events: list[dict]) -> int:
+    """Add events not stored yet and drop those older than EVENT_DAYS before the newest. Returns how many were added."""
+    src = source(session, name, kind)
+    session.flush()
+    have = {i for (i,) in session.query(WafEvent.id).filter_by(source_id=src.id)}
+    rows = {e["id"]: baffinbay.event_row(e) for e in events if e.get("id") and e["id"] not in have}
+    session.add_all(WafEvent(source_id=src.id, **r) for r in rows.values())
+    session.flush()
+    if newest := session.query(WafEvent.time).filter_by(source_id=src.id).order_by(WafEvent.time.desc()).limit(1).scalar():
+        cutoff = (datetime.fromisoformat(newest.replace("Z", "+00:00")) - timedelta(days=EVENT_DAYS)).strftime("%Y-%m-%dT%H:%M:%S")
+        session.query(WafEvent).filter(WafEvent.source_id == src.id, WafEvent.time < cutoff).delete()
+    session.commit()
+    return len(rows)
+
+
+def last_event(session, name: str) -> str | None:
+    """The id of a source's newest stored event: where the next collection carries on."""
+    return session.query(WafEvent.id).join(Source, WafEvent.source_id == Source.id).filter(Source.name == name) \
+        .order_by(WafEvent.time.desc()).limit(1).scalar()
 
 
 def load_specs(cfg: dict) -> list[dict]:

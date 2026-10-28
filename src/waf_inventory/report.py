@@ -10,10 +10,11 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 from openpyxl import Workbook
 from sqlalchemy.orm import Session
 
+from . import tuning as _tuning_mod
 from .discovery import openapi
 from .models import Endpoint, Finding, Gateway, Listener, Source, WafPolicy
 
-TABLES = ("applications", "routes", "policies", "policy_settings", "endpoints", "findings", "sources")
+TABLES = ("applications", "routes", "policies", "policy_settings", "endpoints", "findings", "tuning", "sources")
 env = Environment(loader=PackageLoader("waf_inventory"), autoescape=select_autoescape())
 
 
@@ -151,6 +152,14 @@ def _sources(s: Session) -> list[dict]:
     return [{"source": x.name, "kind": x.kind, "status": x.status, "last_run": x.last_run, "error": x.error or "",
              "gateways": len(x.gateways), "policies": len(x.policies), "endpoints": len(x.endpoints)}
             for x in s.query(Source).order_by(Source.name)]
+
+
+def _tuning(s: Session) -> list[dict]:
+    return [{"verdict": g["verdict"], "score": g["score"], "proxy": g["proxy"], "host": g["host"], "method": g["method"],
+             "path": g["path"], "rule": g["rule"], "rule_name": g["rule_name"], "events": g["events"], "sources": g["sources"],
+             "days": g["days"], "first": g["first"], "last": g["last"], "evidence": "; ".join(g["evidence"] + g["attack_signs"]),
+             "proposal": f"exclude {g['proposal']['rule']} on {g['proposal']['match']}" if g["proposal"] else g["note"],
+             "decision": g["decision"]} for g in _tuning_mod.groups(s)]
 
 
 def summary(s: Session) -> dict:

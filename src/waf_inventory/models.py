@@ -24,6 +24,7 @@ class Source(Base):
     gateways: Mapped[list[Gateway]] = relationship(back_populates="source", cascade="all, delete-orphan")
     policies: Mapped[list[WafPolicy]] = relationship(back_populates="source", cascade="all, delete-orphan")
     endpoints: Mapped[list[Endpoint]] = relationship(back_populates="source", cascade="all, delete-orphan")
+    events: Mapped[list[WafEvent]] = relationship(cascade="all, delete-orphan")
 
 
 class Gateway(Base):
@@ -110,6 +111,36 @@ class Endpoint(Base):
     path_params: Mapped[dict] = mapped_column(JSON, default=dict)  # name -> type
     samples: Mapped[list] = mapped_column(JSON, default=list)  # a few raw paths, query stripped
     source: Mapped[Source] = relationship(back_populates="endpoints")
+
+
+class WafEvent(Base):
+    """A request a WAF rule matched (Baffin Bay), kept for tuning. Of the headers only Host and User-Agent are kept."""
+    __tablename__ = "waf_event"
+    id: Mapped[str] = mapped_column(primary_key=True)  # the vendor's event id
+    source_id: Mapped[int] = mapped_column(ForeignKey("source.id"), index=True)
+    time: Mapped[str] = mapped_column(index=True)  # ISO 8601, UTC
+    proxy: Mapped[str | None]  # the vendor's id of the proxy (= WafPolicy.native_id)
+    host: Mapped[str]
+    method: Mapped[str | None]
+    path: Mapped[str]  # query string dropped
+    status: Mapped[int | None]  # what the client got: the WAF's 403 when blocked, the application's answer when only logged
+    action: Mapped[str | None]  # BLOCKED | LOGGED
+    instance: Mapped[str] = mapped_column(default="main")  # main | staging
+    rules: Mapped[list] = mapped_column(JSON, default=list)  # [{"id": "942100", "name": ...}]
+    matched: Mapped[list] = mapped_column(JSON, default=list)  # matched data, when the proxy records it
+    source_ip: Mapped[str | None]
+    country: Mapped[str | None]
+    user_agent: Mapped[str | None]
+    support_id: Mapped[str | None] = mapped_column(index=True)
+
+
+class TuningDecision(Base):
+    """An administrator's answer to one tuning proposal, keyed by proxy + rule + path template."""
+    __tablename__ = "tuning_decision"
+    key: Mapped[str] = mapped_column(primary_key=True)
+    decision: Mapped[str]  # approved | rejected
+    user: Mapped[str | None]
+    time: Mapped[datetime]
 
 
 class Finding(Base):

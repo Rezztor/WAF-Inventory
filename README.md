@@ -4,6 +4,7 @@ A **read-only** tool for WAF products. It finds every web app and API published 
 
 - **Azure WAF:** Application Gateway v2 and Front Door Standard/Premium, collected live over ARM, with traffic from Log Analytics.
 - **F5 BIG-IP** (LTM + ASM / Advanced WAF): collected live over iControl REST, or offline from `bigip.conf` and ASM policy exports.
+- **Baffin Bay Threat Protection** (Mastercard): proxies, WAF settings and restrictions over its API, plus its WAF events for **false-positive tuning**.
 - **Output:**
   - a web dashboard
   - CSV, JSON and Excel exports
@@ -61,6 +62,7 @@ docker compose restart
 
 **In the console** (the way to do it in the container): Settings › Connections › Add. Every type below has a form, a Test connection button that names the missing permission or wrong setting, and Run now with a live job log.
 - **Azure:** the console makes the sign-in certificate. Download the `.cer`, upload it to the app registration, then test. A client secret also works, and so does a managed identity when the console runs in Azure. Azure Government and Azure China are a choice on the form.
+- **Baffin Bay:** a service account with read access (client ID and secret from the Threat Protection portal) and the tenant ID. A new token can be issued only every 12 hours, so the console keeps the current one encrypted and reuses it.
 - **F5 BIG-IP:** three ways in. REST API (recommended): a read-only Auditor account, optional port, token sign-in and a partition filter; Fetch certificate shows the device's certificate, compare its SHA-256 fingerprint on the BIG-IP and trust it, and from then on only that certificate is accepted. SSH (where REST is blocked): read-only `tmsh list` commands with a key or password, and the host key is pinned the same way. Offline files (no network): upload a UCS, `bigip.conf` or ASM policy exports, or point at a folder on the server.
 - **Credentials** are encrypted in the database with the master key (`/run/secrets/master_key`, or the file named by `WAF_INV_MASTER_KEY_FILE`). They are never shown again; leave a field blank to keep the saved value.
 - **Schedules:** Settings › Data collection sets the default (daily or weekly, at a time in a chosen time zone, with catch-up after downtime and one retry 15 minutes after a failure). Each connection uses the default, its own schedule, or manual only. Overview and Sources warn about failed runs and about certificates or client secrets expiring within 30 days.
@@ -84,10 +86,12 @@ waf-inv serve
 | `azure_bundle` | The same data from a JSON file (`waf-inv collect --save-raw DIR` writes one from a live run) | none |
 | `f5_rest` | iControl REST: virtual servers, pools, LTM policies (first-match by ordinal), iRules, client-SSL SNI, ASM policies with a **declarative JSON export** (1 MB chunks). If the account may not export, it falls back to REST subcollections. | BIG-IP **Auditor** account; HTTPS to the management address; `ca_cert` pins the device certificate |
 | `f5_offline` | A folder with `bigip.conf` (or `tmsh list … recursive` output) and ASM policy JSON exports | none |
+| `baffinbay` | Traffic Management API: every HTTP proxy, L4 proxy and routed DSR with its hostnames, backends, traffic rules, WAF mode, paranoia level, CRS version, exclusions, staged WAF, HTTP compliance, rate limits, geo and IP rules and bot protection; the CRS rule catalogue; and the Event Insight API's WAF events. Collected by the console only. | A Threat Protection service account with read access |
+| `baffinbay_bundle` | The same data from a JSON file in the shape of `examples/baffinbay/bundle.json` | none |
 | `logs` | JSONL/CSV access-log rows (`host, method, path, status, content_type, user_agent, hits, first_seen, last_seen`), e.g. F5 request logs exported from a SIEM | none |
 
 **Read-only by design:**
-- Azure and the F5 inventory use only GET.
+- Azure, Baffin Bay and the F5 inventory use only GET (Baffin Bay also POSTs once for a sign-in token).
 - The Log Analytics query is a read-only POST.
 - The F5 ASM export is a task POST that writes a file on the device and changes no configuration.
 - Query-string values are discarded on input; only parameter names are stored.
@@ -101,7 +105,7 @@ waf-inv export -f xlsx|csv|json|html|openapi [-t TABLE] [-o PATH]
 waf-inv serve [--host 127.0.0.1] [--port 8000]
 ```
 
-Tables: `applications`, `routes`, `policies`, `policy_settings`, `endpoints`, `findings`, `sources`. Every dashboard list also has CSV, JSON and Excel export links that keep the current filter.
+Tables: `applications`, `routes`, `policies`, `policy_settings`, `endpoints`, `findings`, `tuning`, `sources`. Every dashboard list also has CSV, JSON and Excel export links that keep the current filter.
 
 ## How it works
 
@@ -115,6 +119,12 @@ Tables: `applications`, `routes`, `policies`, `policy_settings`, `endpoints`, `f
   - `overrides` fixes templates the heuristics can't infer (e.g. usernames).
   - Endpoints with fewer than `min_hits` hits are unconfirmed.
   - Each endpoint is classified as api / web / static / ws / unknown.
+- **False-positive tuning** (Baffin Bay, `tuning.py`). WAF events are kept 35 days (the API keeps 5, so collect at least daily); of the headers only Host and User-Agent are stored. Events are grouped by proxy, rule and path template, and each group is scored from counted evidence:
+  - for a false positive: many distinct sources over several days, one rule per request, the application answering 2xx or 3xx when the request was only logged (LOG mode or the Staged WAF), and rule families known to misfire on ordinary input (920, 921, 932, 941, 942);
+  - for an attack, which blocks any proposal: scanner or empty user agents, 404 answers, several rules per request, or many events from one or two sources.
+  - A likely false positive gets the narrowest exclusion, the rule on that path with `{*}` for its parameters, never a whole-site path or all rules. Approved rows download as PATCH request bodies (Staged WAF first, then the WAF, with the existing exclusions kept) or as Terraform `path_exclusions` for the `baffinbay/threat-protection` provider. Nothing is applied by WAF Inventory.
+  - There is no language model in it, on purpose: the same events always give the same plan, and request content written by an attacker cannot argue for an exclusion. A Support ID from a block page finds its event and group.
+  - Baffin Bay records no allowed traffic, so it is not a source for API discovery.
 - **Shadow APIs** are confirmed API endpoints that don't match the ASM allowed URLs, or don't match the OpenAPI specs listed under `discovery.openapi_specs`. **Dormant APIs** are documented operations that never appear in traffic.
 
 ## Development
@@ -128,7 +138,7 @@ The tests run without network access:
 - Live Azure (paging, 429 retry, Log Analytics) and live F5 REST (token auth, 503 retry, chunked ASM export, 403 fallback) run against mock HTTP servers.
 - The REST and offline F5 paths are checked to produce the same inventory.
 
-**Not yet covered:** Classic Front Door (retires March 2027), App Gateway for Containers, reading F5 logs directly over syslog, BIG-IQ, and cloud WAFs (Cloudflare, AWS WAF, Akamai, Imperva). See the roadmap in the plan.
+**Not yet covered:** Classic Front Door (retires March 2027), App Gateway for Containers, reading F5 logs directly over syslog, BIG-IQ, and other cloud WAFs (Cloudflare, AWS WAF, Akamai, Imperva). For Baffin Bay, applying approved exclusions and plain-English explanations of borderline tuning rows are planned. See the roadmap in the plan.
 
 ## Licence
 
