@@ -137,9 +137,8 @@ Copyright (C) 2026 Rezztor Technologies (Private) Limited.
 WAF Inventory is free software under the GNU Affero General Public License version 3 ([LICENSE](LICENSE)). If you run a
 modified version as a network service, you must offer its source to the people who use it.
 
-Rezztor Technologies also licenses WAF Inventory commercially, without the AGPL's obligations, for organisations that
-cannot meet them. Contributions are not accepted from outside (see [CONTRIBUTING.md](CONTRIBUTING.md)), so every line
-can be offered under both licences.
+It is free to use, with no licence key and nothing to buy. Contributions are not accepted from outside (see
+[CONTRIBUTING.md](CONTRIBUTING.md)); issues are welcome.
 
 "Rezztor" and its logo are trademarks of Rezztor Technologies (Private) Limited and are not licensed with the code:
 see [TRADEMARKS.md](TRADEMARKS.md).
