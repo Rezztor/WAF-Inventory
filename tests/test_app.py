@@ -26,7 +26,8 @@ def test_findings_cover_the_planted_issues(session):
         ("shadow-api", "GET app1.corp.contoso.com/api/v1/payroll/export"),  # not in ASM allowed URLs
         ("shadow-api", "GET shop.contoso.com/api/internal/debug/config"),  # not in the OpenAPI spec
         ("unprotected-api", "POST partners.contoso.com/api/partner/orders"),
-        ("unknown-host", "GET old.contoso.com/api/status"),
+        ("unknown-host", "old.contoso.com"),
+        ("stray-hosts", "1 host(s)"),  # probe.invalid: one request with a made-up Host header
         ("dormant-api", "GET shop.contoso.com/api/v1/wishlist"),
     }
     assert expected <= got, expected - got
@@ -34,6 +35,7 @@ def test_findings_cover_the_planted_issues(session):
     assert ("shadow-api", "GET app1.corp.contoso.com/api/v1/employees/{employee_id}") not in got
     assert ("shadow-api", "GET shop.contoso.com/api/v1/orders/{order_id}") not in got
     assert ("waf-disabled", "f5: /Common/old_unused_waf") not in got  # unattached: reported once as unused
+    assert ("unknown-host", "probe.invalid") not in got
 
 
 def test_effective_policy_on_endpoints(session):
@@ -48,7 +50,7 @@ def test_effective_policy_on_endpoints(session):
 def test_dashboard_pages(client, demo_db):
     c = client
     r = c.get("/")
-    assert r.status_code == 200 and "applications" in r.text and "web listeners in blocking mode" in r.text
+    assert r.status_code == 200 and "applications" in r.text and "of web listeners" in r.text and "Run all now" in r.text
     for name in report.TABLES:
         r = c.get(f"/t/{name}")
         assert r.status_code == 200, name
@@ -76,7 +78,8 @@ def test_exports_over_http(client):
     assert wb.sheetnames == list(report.TABLES) and wb["endpoints"].max_row > 40
     assert load_workbook(io.BytesIO(c.get("/export/routes.xlsx").content)).sheetnames == ["routes"]
     html = c.get("/export/report.html").text
-    assert "WAF Inventory Report" in html and "fdwafcontoso" in html and "<script" not in html
+    assert "WAF posture report" in html and "fdwafcontoso" in html and "<script" not in html
+    assert "Fix plan, biggest gain first" in html and "How to fix" in html and "Posture score" in html
     doc = c.get("/export/openapi/api.contoso.com.json").json()
     assert "/v2/customers/{customer_id}" in doc["paths"] and "patch" in doc["paths"]["/v2/customers/{customer_id}"]
     assert c.get("/export/nope.csv").status_code == 404 and c.get("/export/routes.exe").status_code == 404

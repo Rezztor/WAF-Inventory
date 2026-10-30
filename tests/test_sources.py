@@ -44,7 +44,7 @@ def test_demo_sources_added_tested_and_collected_from_the_browser(console):
         assert {"no-waf", "shadow-api", "detection-mode"} <= {f["rule"] for f in report.table(s, "findings")}
     assert "partners.contoso.com" in c.get("/t/applications").text
     page = c.get("/sources").text
-    assert page.count('class="b ok"') == 3 and "Run now" in page
+    assert page.count('class="pill ok">Working') == 3 and "Run now" in page
     # a broken path is reported in plain words, on the job and on the source list
     bad = add(c, "f5_offline", name="broken", path="nowhere")
     assert "does not exist on the server" in c.post(f"/sources/{bad}/test", data={"csrf": csrf(c)}).text
@@ -64,8 +64,8 @@ def test_f5_password_is_write_only_and_encrypted(console):
     assert r.status_code == 303
     with connect(c.db) as s:
         sc = s.query(SourceConfig).one()
-        assert sc.settings == {"host": "192.0.2.11", "username": "auditor", "export": False,
-                               "schedule": {"every": "off", "at": "02:00", "day": 0}, "next_run": None}
+        assert sc.settings == {"host": "192.0.2.11", "port": 443, "username": "auditor", "token": False, "export": False,
+                               "schedule": {"every": "off", "at": "02:00", "day": 0, "tz": "UTC"}, "next_run": None}
         assert vault.get(sc, "password") == "Very-Secret-Pw1"  # blank field kept it
     assert b"Very-Secret-Pw1" not in open(c.db, "rb").read()
 

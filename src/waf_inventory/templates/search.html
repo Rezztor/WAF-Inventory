@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Search · WAF Inventory{% endblock %}
+{% block heading %}{{ "Results for “" ~ q ~ "”" if q.strip() else "Search" }}{% endblock %}
+{% block sub %}<div class="sub">{{ total ~ " match" ~ ("es" if total != 1) if q.strip() else "Type part of a hostname, policy name, API path or issue" }}</div>{% endblock %}
+{% block body %}
+{% for group, rows in hits.items() if rows %}
+<section class="card" style="overflow:hidden"><div class="head"><h2>{{ group }} ({{ rows | length }})</h2></div>
+<div class="list">{% for href, label, note in rows %}<a class="item" href="{{ href }}" style="text-decoration:none"><b class="mono" style="flex:1 1 260px;overflow-wrap:anywhere">{{ label }}</b><span class="muted">{{ note }}</span></a>{% endfor %}</div>
+</section>
+{% else %}{% if q.strip() %}<p class="muted">Nothing matches. Try a shorter part of the name, such as the first label of a hostname.</p>{% endif %}{% endfor %}
+{% endblock %}

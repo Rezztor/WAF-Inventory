@@ -10,10 +10,11 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 from openpyxl import Workbook
 from sqlalchemy.orm import Session
 
+from . import tuning as _tuning_mod
 from .discovery import openapi
-from .models import Endpoint, Finding, Gateway, Listener, Source, WafPolicy
+from .models import Change, Endpoint, Finding, Gateway, Listener, Source, WafPolicy, now
 
-TABLES = ("applications", "routes", "policies", "policy_settings", "endpoints", "findings", "sources")
+TABLES = ("applications", "routes", "policies", "policy_settings", "endpoints", "findings", "tuning", "changes", "sources")
 env = Environment(loader=PackageLoader("waf_inventory"), autoescape=select_autoescape())
 
 
@@ -47,6 +48,26 @@ class Inventory:
                 if (not r.hosts or any(fnmatch(host, h) for h in r.hosts)) and any(fnmatch(path, p) for p in r.paths or ["/*"]):
                     return lst, r.policy
         return first, first.policy if first else None
+
+
+def verdict(listeners: list[Listener]) -> dict:
+    """Is an application protected? The worst of its routes: no WAF or WAF off is at risk, detect or unknown is partial."""
+    reasons: list[tuple[str, str]] = []
+    for lst in listeners:
+        at = f"{lst.gateway.name} / {lst.name}"
+        if not lst.waf_capable:
+            reasons.append(("warn", f"{at} is a layer-4 listener: no HTTP inspection"))
+            continue
+        for name, pol in [(r.name, r.policy) for r in lst.routes] or [("default", lst.policy)]:
+            mode = pol.mode if pol else "none"
+            if mode in ("none", "off"):
+                reasons.append(("crit", f"{at}, route {name}: {'no WAF policy' if mode == 'none' else 'the WAF policy is off'}"))
+            elif mode != "block":
+                reasons.append(("warn", f"{at}, route {name}: {'detect only' if mode == 'detect' else 'mode unknown'} ({pol.name})"))
+    tone = "crit" if any(t == "crit" for t, _ in reasons) else "warn" if reasons else "ok"
+    return {"tone": tone, "headline": {"ok": "Protected: every route is behind a blocking WAF", "warn": "Partly protected",
+                                       "crit": "At risk: requests reach the application uninspected"}[tone],
+            "reasons": [r for _, r in sorted(reasons, key=lambda x: x[0] != "crit")]}
 
 
 # ---------------------------------------------------------------- tables
@@ -147,10 +168,24 @@ def _findings(s: Session) -> list[dict]:
     return sorted(rows, key=lambda r: (order.get(r["severity"], 9), r["rule"], r["subject"]))
 
 
+def _changes(s: Session) -> list[dict]:
+    return [{"time": c.time.strftime("%Y-%m-%d %H:%M"), "source": c.source, "change": c.kind, "what": c.what, "subject": c.subject,
+             "detail": c.detail, "weakened": "yes" if c.weakened else ""}
+            for c in s.query(Change).order_by(Change.time.desc(), Change.weakened.desc(), Change.id)]
+
+
 def _sources(s: Session) -> list[dict]:
     return [{"source": x.name, "kind": x.kind, "status": x.status, "last_run": x.last_run, "error": x.error or "",
              "gateways": len(x.gateways), "policies": len(x.policies), "endpoints": len(x.endpoints)}
             for x in s.query(Source).order_by(Source.name)]
+
+
+def _tuning(s: Session) -> list[dict]:
+    return [{"verdict": g["verdict"], "score": g["score"], "proxy": g["proxy"], "host": g["host"], "method": g["method"],
+             "path": g["path"], "rule": g["rule"], "rule_name": g["rule_name"], "events": g["events"], "sources": g["sources"],
+             "days": g["days"], "first": g["first"], "last": g["last"], "evidence": "; ".join(g["evidence"] + g["attack_signs"]),
+             "proposal": f"exclude {g['proposal']['rule']} on {g['proposal']['match']}" if g["proposal"] else g["note"],
+             "decision": g["decision"]} for g in _tuning_mod.groups(s)]
 
 
 def summary(s: Session) -> dict:
@@ -159,6 +194,7 @@ def summary(s: Session) -> dict:
     findings = table(s, "findings")
     return {
         "applications": len({a["application"] for a in apps}),
+        "vendors": sorted({v for (v,) in s.query(Gateway.vendor).distinct()}),
         "gateways": s.query(Gateway).count(), "policies": s.query(WafPolicy).count(),
         "endpoints": s.query(Endpoint).count(), "api_endpoints": s.query(Endpoint).filter_by(kind="api").count(),
         "coverage": round(100 * sum(a["mode"] == "block" for a in web) / len(web)) if web else 0,
@@ -207,9 +243,14 @@ def _cell(v):
 
 
 def to_html(session: Session) -> str:
-    """Self-contained full-inventory report."""
+    """Self-contained report: the score and fix plan first, then recent changes and the full inventory."""
+    from importlib import metadata
+
+    from . import remedies  # remedies reads report's Inventory
     sheets = {n: table(session, n) for n in TABLES}
-    return env.get_template("report.html").render(summary=summary(session), sheets=sheets)
+    return env.get_template("report.html").render(summary=summary(session), sheets=sheets, plan=remedies.plan(session),
+                                                  trend=remedies.score_history(session), changes=sheets["changes"][:50],
+                                                  generated=now().strftime("%d %b %Y, %H:%M"), version=metadata.version("waf-inventory"))
 
 
 def all_sheets(session: Session) -> dict[str, list[dict]]:

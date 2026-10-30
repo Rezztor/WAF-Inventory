@@ -1,16 +1,20 @@
 """Posture findings over the stored inventory: unprotected apps, weak policies, shadow and dormant APIs."""
 from __future__ import annotations
 
+import ipaddress
+import re
 from collections.abc import Iterable
 from urllib.parse import urlsplit
 
 from sqlalchemy.orm import Session
 
+from . import remedies, tuning
+from .baffinbay import RISKY_METHODS
 from .discovery import glob_rx, template_rx
 from .models import Endpoint, Finding, Listener, WafPolicy
 from .report import Inventory
 
-MIN_RULESET = {"OWASP": (3, 2), "Microsoft_DefaultRuleSet": (2, 1), "DefaultRuleSet": (1, 0)}
+MIN_RULESET = {"OWASP": (3, 2), "Microsoft_DefaultRuleSet": (2, 1), "DefaultRuleSet": (1, 0), "CRS": (4, 0)}
 
 
 def _ver(v: str) -> tuple:
@@ -58,7 +62,7 @@ def run(session: Session, specs: Iterable[dict] = ()) -> list[Finding]:
             floor = MIN_RULESET.get(rs.get("type"))
             if floor and _ver(rs.get("version")) < floor:
                 add("old-ruleset", "medium", "Outdated managed rule set", subj, f"{rs['type']} {rs['version']}")
-        if p.vendor == "azure" and p.mode != "unknown" and not st.get("bot"):
+        if p.vendor in ("azure", "baffinbay") and p.mode != "unknown" and not st.get("bot"):
             add("no-bot-protection", "low", "No bot protection rule set", subj)
         if st.get("disabled_rules"):
             add("disabled-rules", "medium", "Managed rules / signatures disabled", subj,
@@ -77,13 +81,43 @@ def run(session: Session, specs: Iterable[dict] = ()) -> list[Finding]:
                                       f"{st['staged_signatures']} signature(s) staged" if st.get("staged_signatures") else "") if x))
         if st.get("violations_not_blocking"):
             add("violations-not-blocking", "low", "Violations set to alarm only", subj, ", ".join(st["violations_not_blocking"][:10]))
+        if p.vendor == "baffinbay":
+            _baffinbay(add, st, subj)
         if p.vendor == "f5" and st.get("export") == "missing":
             add("policy-detail-missing", "low", "No ASM policy export available; settings incomplete", subj)
 
     out += _api_findings(session, list(specs))
+    todo: dict[str, int] = {}
+    for g in tuning.groups(session):
+        if g["verdict"] == "false positive" and not g["decision"]:
+            todo[g["proxy"]] = todo.get(g["proxy"], 0) + 1
+    for proxy, n in sorted(todo.items()):
+        add("tuning-candidates", "low", "Likely WAF false positives to review", f"baffinbay: {proxy}", f"{n} on the Tuning page")
     session.add_all(out)
     session.commit()
+    remedies.remember_score(session)
     return out
+
+
+def _baffinbay(add, st: dict, subj: str) -> None:
+    if not st.get("rate_limits"):
+        add("no-rate-limit", "medium", "No rate limit enforced", subj)
+    if st.get("backend_tls") in ("plaintext", "not verified"):
+        add("backend-tls-unverified", "medium", "Traffic to the backend is not verified TLS", subj, st["backend_tls"])
+    if risky := sorted(set(st.get("allowed_methods", [])) & RISKY_METHODS):
+        add("risky-methods", "medium", "Risky HTTP methods allowed", subj, ", ".join(risky))
+    wide = [e["selector"] for e in st.get("exclusions", []) if e["variable"] == "path" and re.match(r"/?(\{\*\}|\*)", e["selector"] or "")]
+    wide += [x for x in st.get("source_exclusions", []) if ipaddress.ip_network(x, strict=False).num_addresses > 256]
+    if wide:
+        add("wide-exclusion", "medium", "Exclusion covers every path or a wide source range", subj, ", ".join(wide))
+    if not st.get("matched_data"):
+        add("matched-data-off", "low", "WAF matched data is not recorded, so false positives are harder to judge", subj)
+    if st.get("hsts") is False:
+        add("no-hsts", "low", "HTTPS without HSTS", subj)
+    if st.get("frontend_tls") is False:
+        add("no-frontend-tls", "medium", "Published over plain HTTP", subj)
+    if st.get("paranoia_level") == 1:
+        add("paranoia-1", "low", "WAF at paranoia level 1, the least strict", subj, "try level 2 in the Staged WAF first")
 
 
 def _api_findings(session: Session, specs: list[dict]) -> list[Finding]:
@@ -96,12 +130,12 @@ def _api_findings(session: Session, specs: list[dict]) -> list[Finding]:
             spec_paths.setdefault(host.lower(), []).extend((m.upper(), path) for m in ops if not m.startswith("x-"))
 
     seen: dict[str, list[Endpoint]] = {}
+    unknown: dict[str, list[Endpoint]] = {}
     for e in session.query(Endpoint):
         seen.setdefault(e.host, []).append(e)
         subj, sample = f"{e.method} {e.host}{e.template}", (e.samples or [e.template])[0]
         if not inv.listeners_for(e.host):
-            out.append(Finding(rule="unknown-host", severity="medium", title="Traffic for a host not in the inventory",
-                               subject=subj, detail=f"{e.hits} request(s)"))
+            unknown.setdefault(e.host, []).append(e)
             continue
         if e.kind != "api" or not e.confirmed:
             continue
@@ -118,6 +152,17 @@ def _api_findings(session: Session, specs: list[dict]) -> list[Finding]:
                                             for m, t in spec_paths[e.host] for s in e.samples):
             out.append(Finding(rule="shadow-api", severity="high", title="Shadow API: not in the OpenAPI spec",
                                subject=subj, detail=f"{e.hits} request(s)"))
+
+    stray = []  # hosts with no confirmed endpoint: mostly scanners sending made-up Host headers
+    for host, eps in unknown.items():  # one finding per host, however many paths it was probed on
+        if not any(e.confirmed for e in eps):
+            stray.append(host)
+            continue
+        out.append(Finding(rule="unknown-host", severity="medium", title="Traffic for a host not in the inventory", subject=host,
+                           detail=f"{len(eps)} endpoint(s), {sum(e.hits for e in eps)} request(s)"))
+    if stray:
+        out.append(Finding(rule="stray-hosts", severity="low", title="A few requests for hosts not in the inventory",
+                           subject=f"{len(stray)} host(s)", detail=", ".join(sorted(stray)[:10]) + (" …" if len(stray) > 10 else "")))
 
     for host, ops in spec_paths.items():
         eps = seen.get(host, [])

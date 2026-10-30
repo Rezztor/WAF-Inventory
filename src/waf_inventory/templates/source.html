@@ -1,116 +1,218 @@
 {% extends "base.html" %}
-{% block title %}{{ sc.name or "New source" }} · WAF Inventory{% endblock %}
-{% macro post(action, label, cls="") %}<form method="post" action="{{ action }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="{{ cls }}">{{ label }}</button></form>{% endmacro %}
+{% set f5 = sc.type in ("f5_rest", "f5_ssh", "f5_offline") %}
+{% block title %}{{ sc.name or "New connection" }} · WAF Inventory{% endblock %}
+{% block crumb %}<div class="crumb"><a href="/sources">Settings</a> / <a href="/sources">Connections</a></div>{% endblock %}
+{% block heading %}{% if not new %}{{ sc.name }}{% elif sc.type == "azure" %}Add Azure WAF connection{% elif f5 %}Add F5 device{% else %}Add: {{ title }}{% endif %}{% endblock %}
+{% block width %}narrow{% endblock %}
+
+{% macro checked(on) %}{{ "checked" if on }}{% endmacro %}
+
+{% macro input(key, ph="", mono=False, area=False, cls="") %}{% set f = fields[key] %}{% set v = sc.settings.get(key) %}
+<label class="lbl {{ cls }}">{{ f.label }}
+{% if f.kind == "secret" %}{% if secrets.get(key) %}<span class="hint"><span class="pill ok">Set</span> updated {{ secrets[key].updated.strftime("%d %b %Y") }}</span>{% endif %}
+{% if area %}<textarea class="in" name="{{ key }}" rows="4" autocomplete="off" placeholder="{{ 'Leave blank to keep the saved value' if secrets.get(key) else ph }}"></textarea>
+{% else %}<input class="in" type="password" name="{{ key }}" autocomplete="new-password" placeholder="{{ 'Leave blank to keep the saved value' if secrets.get(key) else ph }}">{% endif %}
+{% elif f.kind == "list" and area %}<textarea class="in" name="{{ key }}" rows="3" placeholder="{{ ph }}">{{ v | join("\n") if v is iterable and v is not string else (v or "") }}</textarea>
+{% elif f.kind == "list" %}<input class="in" name="{{ key }}" value="{{ v | join(', ') if v is iterable and v is not string else (v or '') }}" placeholder="{{ ph }}">
+{% elif f.kind == "date" %}<input class="in" type="date" name="{{ key }}" value="{{ v or '' }}">
+{% else %}<input class="in {{ 'mono' if mono }}" name="{{ key }}" value="{{ v if v is not none else '' }}" placeholder="{{ ph }}" {{ 'inputmode=numeric' if f.kind == 'int' }} {{ 'required' if f.required }}>{% endif %}
+{% if f.help and not (f.kind == "list" and ph) %}<span class="hint">{{ f.help }}</span>{% endif %}</label>
+{% endmacro %}
+
+{% macro box(key, label, help, rec=False) %}
+<label class="check"><input type="checkbox" name="{{ key }}" {{ checked(sc.settings.get(key)) }}><span><b>{{ label }}</b>{% if rec %} <span class="pill ok">Recommended</span>{% endif %}<br><span class="hint">{{ help }}</span></span></label>
+{% endmacro %}
+
+{% macro step(n, label) %}<div class="steph"><span class="step" aria-hidden="true">{{ n }}</span><h2>{{ label }}</h2></div>{% endmacro %}
+
+{% macro test_step(n) %}
+<section class="card pad">{{ step(n, "Test") }}
+<div class="actions"><button class="primary" name="then" value="test">Save and test</button>
+<span class="hint">Saves, then signs in and reads a little. The inventory is not changed until a run.</span></div>
+</section>
+{% endmacro %}
+
+{% macro schedule(n) %}
+{% set mode = "default" if sched.every == "default" or (new and not sched) else "off" if (sched.every or "off") == "off" else "own" %}
+<section class="card pad">{{ step(n, "Schedule") }}
+<div class="seg" role="radiogroup" aria-label="Schedule">
+{% for val, label in (("default", "Use the default"), ("own", "Own schedule"), ("off", "Manual only")) %}<label><input type="radio" name="schedule_mode" value="{{ val }}" {{ checked(mode == val) }}><span>{{ label }}</span></label>{% endfor %}
+</div>
+<div class="if-default" style="margin:0;color:var(--ink-2)"><span>{{ default_text }}. <a href="/settings">Change the default</a></span></div>
+<div class="if-own" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:14px;max-width:760px">
+<label class="lbl">How often<select class="in" name="schedule_every">{% for val, label in (("daily", "Daily"), ("weekly", "Weekly"), ("hourly", "Every hour")) %}<option value="{{ val }}" {{ "selected" if sched.every == val }}>{{ label }}</option>{% endfor %}</select></label>
+<label class="lbl">Day (weekly)<select class="in" name="schedule_day">{% for d in days %}<option value="{{ loop.index0 }}" {{ "selected" if (sched.day or 0) == loop.index0 }}>{{ d }}</option>{% endfor %}</select></label>
+<label class="lbl">At<input class="in" type="time" name="schedule_at" value="{{ sched.at or '02:00' }}"></label>
+<label class="lbl">Time zone<select class="in" name="schedule_tz">{% for z in zones %}<option {{ "selected" if (sched.tz or default.tz) == z }}>{{ z }}</option>{% endfor %}</select></label>
+</div>
+<div class="if-manual" style="margin:0;color:var(--ink-2)"><span>Runs only when you press Run now{{ ", or when you upload new files" if sc.type == "f5_offline" }}.</span></div>
+{% if sc.settings.next_run %}<p class="hint" style="margin:0">Next run {{ sc.settings.next_run[:16] | replace("T", " ") }} UTC.</p>{% endif %}
+</section>
+{% endmacro %}
+
 {% block body %}
-<p class="crumb"><a href="/sources">Sources</a> / {{ title }}</p>
-<h1>{{ "Add: " ~ title if new else sc.name }}</h1>
 {% if msg %}<p class="note" role="status">{{ msg }}</p>{% endif %}
 {% if errors %}<div class="alert" role="alert"><b>Not saved.</b><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
 {% if test %}<div class="{{ 'note' if test.ok else 'alert' }}" role="status"><b>{{ "Connection works." if test.ok else "Connection failed." }}</b>
 <ul>{% for l in test.lines %}<li>{{ l }}</li>{% endfor %}</ul></div>{% endif %}
 
-<div class="layout">
-<form class="panel stack" method="post" action="{{ '/sources/new/' ~ sc.type if new else '/sources/' ~ sc.id }}">
-<input type="hidden" name="csrf" value="{{ csrf }}">
-<label>Name<input name="name" value="{{ sc.name }}" required {{ "autofocus" if new else "readonly" }}>
-{% if not new %}<small>The name identifies this source's data and cannot be changed.</small>{% endif %}</label>
-{% for f in fields %}{% set v = sc.settings.get(f.key) %}
-{% if f.kind == "bool" %}<label class="check"><input type="checkbox" name="{{ f.key }}" {{ "checked" if v }}> {{ f.label }}</label>
-{% elif f.kind == "choice" %}<fieldset><legend>{{ f.label }}</legend>
-{% for val, lab in f.choices %}<label class="check"><input type="radio" name="{{ f.key }}" value="{{ val }}" {{ "checked" if v == val }}> {{ lab }}</label>{% endfor %}</fieldset>
-{% elif f.kind == "secret" %}<label>{{ f.label }}{% if secrets.get(f.key) %} <span><span class="b ok">Set</span> updated {{ secrets[f.key].updated.strftime("%d %b %Y") }}</span>{% endif %}
-<input type="password" name="{{ f.key }}" autocomplete="new-password" placeholder="{{ 'Leave blank to keep the saved value' if secrets.get(f.key) else '' }}">
-{% if f.help %}<small>{{ f.help }}</small>{% endif %}</label>
-{% elif f.kind == "list" %}<label>{{ f.label }}<textarea name="{{ f.key }}" rows="3">{{ v | join("\n") if v is iterable and v is not string else (v or "") }}</textarea>
-{% if f.help %}<small>{{ f.help }}</small>{% endif %}</label>
-{% elif f.kind == "date" %}<label>{{ f.label }}<input type="date" name="{{ f.key }}" value="{{ v or '' }}">
-{% if f.help %}<small>{{ f.help }}</small>{% endif %}</label>
-{% else %}<label>{{ f.label }}<input name="{{ f.key }}" value="{{ v if v is not none else '' }}" {{ 'inputmode=numeric' if f.kind == 'int' }} {{ 'required' if f.required }}>
-{% if f.help %}<small>{{ f.help }}</small>{% endif %}</label>
-{% endif %}{% endfor %}
-{% set sch = sc.settings.get("schedule") or {} %}
-<fieldset class="schedule"><legend>Collect automatically</legend>
-<label>How often<select name="schedule_every">{% for val, lab in every %}<option value="{{ val }}" {{ "selected" if (sch.every or "off") == val }}>{{ lab }}</option>{% endfor %}</select></label>
-<label>At (UTC; daily and weekly)<input type="time" name="schedule_at" value="{{ sch.at or '02:00' }}"></label>
-<label>On (weekly)<select name="schedule_day">{% for d in days %}<option value="{{ loop.index0 }}" {{ "selected" if (sch.day or 0) == loop.index0 }}>{{ d }}</option>{% endfor %}</select></label>
-{% if sc.settings.next_run %}<small>Next run {{ sc.settings.next_run[:16] | replace("T", " ") }} UTC.</small>{% endif %}
-</fieldset>
-<div class="actions"><button class="primary">{{ "Add source" if new else "Save" }}</button>{% if new %}<a href="/sources">Cancel</a>{% endif %}</div>
-</form>
-
-<div>
 {% if found %}
-<section class="panel stack"><h2>Choose what to collect</h2>
-<form method="post" action="/sources/{{ sc.id }}/scope"><input type="hidden" name="csrf" value="{{ csrf }}">
-<fieldset><legend>Subscriptions the app can read. None ticked: all of them, including ones added later.</legend>
-{% for id, name in found.subscriptions %}<label class="check"><input type="checkbox" name="subscriptions" value="{{ id }}" {{ "checked" if id in (sc.settings.subscriptions or []) }}> {{ name }} <code>{{ id }}</code></label>
-{% else %}<p class="muted">None. Give the app registration the Reader role on the subscriptions to inventory.</p>{% endfor %}</fieldset>
-<fieldset><legend>Log Analytics workspaces for access logs. None ticked: configuration only, no API discovery.</legend>
-{% for w in found.workspaces %}<label class="check"><input type="checkbox" name="log_workspaces" value="{{ w.id }}" {{ "checked" if w.id in (sc.settings.log_workspaces or []) }}> {{ w.name }} <span class="muted">({{ w.subscription }})</span></label>
-{% else %}<p class="muted">No workspaces visible in these subscriptions.</p>{% endfor %}</fieldset>
-<button class="primary">Save selection</button></form>
-</section>
+<form class="card pad" method="post" action="/sources/{{ sc.id }}/scope"><input type="hidden" name="csrf" value="{{ csrf }}">
+<h2>Choose what to collect</h2>
+<div class="lbl">Subscriptions <span class="hint">None ticked: all of them, including ones added later.</span>
+{% for id, name in found.subscriptions %}<label class="check"><input type="checkbox" name="subscriptions" value="{{ id }}" {{ checked(id in (sc.settings.subscriptions or [])) }}><span><b>{{ name }}</b> <span class="hint mono">{{ id }}</span></span></label>
+{% else %}<p class="muted" style="margin:0">None. Give the app registration the Reader role on the subscriptions to inventory.</p>{% endfor %}</div>
+<div class="lbl">Log Analytics workspaces (for traffic) <span class="hint">None ticked: configuration only, no API discovery.</span>
+{% for w in found.workspaces %}<label class="check"><input type="checkbox" name="log_workspaces" value="{{ w.id }}" {{ checked(w.id in (sc.settings.log_workspaces or [])) }}><span><b>{{ w.name }}</b><br><span class="hint">{{ w.subscription }}</span></span></label>
+{% else %}<p class="muted" style="margin:0">No workspaces visible in these subscriptions.</p>{% endfor %}</div>
+<div class="actions"><button class="primary">Save selection</button></div>
+</form>
 {% endif %}
-{% if not new %}
-<section class="panel"><h2>Check and collect</h2>
-<p class="muted">Test signs in and reads a little, without changing the inventory. Run now collects everything.</p>
-<div class="actions">{{ post("/sources/" ~ sc.id ~ "/test", "Test connection") }}{{ post("/sources/" ~ sc.id ~ "/run", "Run now", "primary") }}</div>
+
+{% if sc.type == "azure" %}<p style="margin:0;color:var(--ink-2);max-width:70ch">Reads Application Gateway and Front Door WAF policies, listeners and routes, and optionally their access and firewall logs from Log Analytics. Read-only: nothing is changed in Azure.</p>
+{% elif f5 %}<p style="margin:0;color:var(--ink-2);max-width:70ch">Reads virtual servers, ASM / Advanced WAF policies and their settings from a BIG-IP. Read-only: nothing is changed on the device.</p>
+{% elif sc.type == "baffinbay" %}<p style="margin:0;color:var(--ink-2);max-width:70ch">Reads the tenant's proxies, their WAF settings and restrictions, and its WAF events for false-positive tuning. Read-only: nothing is changed in Baffin Bay. A new sign-in token can be issued only every 12 hours, so the token is kept here, encrypted.</p>{% endif %}
+
+<form id="main" class="stack" method="post" action="{{ '/sources/new/' ~ sc.type if new else '/sources/' ~ sc.id }}" {{ 'enctype=multipart/form-data' if sc.type == "f5_offline" }} style="gap:16px">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+<button class="sr" tabindex="-1" aria-hidden="true">Save</button>{# Enter in a field saves, never a button further down #}
+{% set name_field %}<label class="lbl">Name<input class="in" name="name" value="{{ sc.name }}" required {{ "autofocus" if new else "readonly" }} placeholder="{{ 'e.g. Contoso production' if sc.type == 'azure' else 'e.g. dc1-bigip01' }}">
+{% if not new %}<span class="hint">The name identifies this connection's data and cannot be changed.</span>{% endif %}</label>{% endset %}
+
+{% if sc.type == "azure" %}
+<section class="card pad">{{ step(1, "Tenant and app") }}
+{{ name_field }}
+<div class="lbl">Azure cloud
+<div class="seg" role="radiogroup" aria-label="Azure cloud">{% for val, label in fields.cloud.choices %}<label><input type="radio" name="cloud" value="{{ val }}" {{ checked(sc.settings.cloud == val or (val == "public" and not sc.settings.cloud)) }}><span>{{ label }}</span></label>{% endfor %}</div>
+<span class="hint">Signs in at <span class="mono if-public">login.microsoftonline.com</span><span class="mono if-usgov">login.microsoftonline.us</span><span class="mono if-china">login.chinacloudapi.cn</span>.</span></div>
+<div class="grid">{{ input("tenant_id", "00000000-0000-0000-0000-000000000000", mono=True) }}{{ input("client_id", "00000000-0000-0000-0000-000000000000", mono=True) }}</div>
 </section>
 
-{% if sc.type == "azure" and sc.settings.auth == "certificate" %}{% set c = secrets.get("certificate") %}{% set n = secrets.get("certificate_next") %}
-<section class="panel"><h2>Sign-in certificate</h2>
-{% if c %}<dl class="kv"><dt>Thumbprint</dt><dd><code>{{ c.meta.thumbprint }}</code></dd><dt>Expires</dt><dd>{{ c.meta.expires }}</dd></dl>
-{% if not n %}<ol class="muted"><li><a href="/sources/{{ sc.id }}/azure/certificate.cer">Download the .cer</a> (public part only; the private key stays here, encrypted).</li>
-<li>In the Microsoft Entra admin center: App registrations › your app › Certificates &amp; secrets › Certificates › Upload certificate.</li>
-<li>Check the thumbprint Azure shows matches, then Test connection.</li></ol>
-<div class="actions">{{ post("/sources/" ~ sc.id ~ "/azure/certificate", "Rotate: make a second certificate") }}
-<small class="muted">The current one keeps working until the new one passes a test.</small></div>{% endif %}
-{% else %}<p>No certificate yet.</p>{{ post("/sources/" ~ sc.id ~ "/azure/certificate", "Make a certificate", "primary") }}{% endif %}
-{% if n %}<h2>New certificate, waiting to replace it</h2>
-<dl class="kv"><dt>Thumbprint</dt><dd><code>{{ n.meta.thumbprint }}</code></dd><dt>Expires</dt><dd>{{ n.meta.expires }}</dd></dl>
-<ol class="muted"><li><a href="/sources/{{ sc.id }}/azure/certificate.cer?next=1">Download the new .cer</a> and upload it to the same app registration (keep the old one there for now).</li>
+<section class="card pad">{{ step(2, "Sign in with") }}
+<div class="opts" role="radiogroup" aria-label="Sign in with">
+{% for val, label, desc in (("certificate", "Certificate", "Made by this app. No shared secret, rotation built in."), ("secret", "Client secret", "Paste a secret from the app registration. It expires, so you are reminded."), ("managed_identity", "Managed identity", "Only when WAF Inventory runs in Azure with an identity attached."), ("default", "This machine's Azure login", "az login or environment variables on the server. For testing.")) %}
+<label class="opt"><input type="radio" name="auth" value="{{ val }}" {{ checked(sc.settings.auth == val) }}><b>{{ label }}{% if val == "certificate" %} <span class="pill ok">Recommended</span>{% endif %}</b><span>{{ desc }}</span></label>{% endfor %}
+</div>
+<div class="if-cert box">{% set c = secrets.get("certificate") %}{% set n = secrets.get("certificate_next") %}
+{% if c %}<div class="row"><span class="pill ok">Certificate ready</span><span style="color:var(--ink-2)">Valid until {{ c.meta.expires }}</span></div>
+<dl class="kv"><dt>Thumbprint</dt><dd class="mono">{{ c.meta.thumbprint }}</dd></dl>
+{% if not n %}<div class="actions"><a class="btn" href="/sources/{{ sc.id }}/azure/certificate.cer">Download .cer</a>
+<span style="color:var(--ink-2)">Then upload it in App registrations › your app › Certificates &amp; secrets › Certificates, check the thumbprint matches, and test.</span></div>
+<div class="actions"><button formaction="/sources/{{ sc.id }}/azure/certificate">Rotate: make a second certificate</button>
+<span class="hint">The current one keeps working until the new one passes a test.</span></div>
+{% else %}<b>New certificate, waiting to replace it</b>
+<dl class="kv"><dt>Thumbprint</dt><dd class="mono">{{ n.meta.thumbprint }}</dd><dt>Expires</dt><dd>{{ n.meta.expires }}</dd></dl>
+<ol class="muted" style="margin:0;padding-left:20px"><li><a href="/sources/{{ sc.id }}/azure/certificate.cer?next=1">Download the new .cer</a> and upload it to the same app registration (keep the old one there for now).</li>
 <li>Test the new certificate. If it works, it replaces the old one here; then delete the old one in Azure.</li></ol>
-<div class="actions"><form method="post" action="/sources/{{ sc.id }}/test"><input type="hidden" name="csrf" value="{{ csrf }}">
-<input type="hidden" name="certificate" value="certificate_next"><button class="primary">Test the new certificate</button></form>
-{{ post("/sources/" ~ sc.id ~ "/azure/cancel-rotation", "Cancel rotation") }}</div>{% endif %}
+<div class="actions"><button class="primary" formaction="/sources/{{ sc.id }}/test" name="certificate" value="certificate_next">Test the new certificate</button>
+<button formaction="/sources/{{ sc.id }}/azure/cancel-rotation">Cancel rotation</button></div>{% endif %}
+{% else %}<span style="color:var(--ink-2)">WAF Inventory makes a key pair when you save. You upload only the public certificate (.cer) to the app registration. The private key never leaves this server.</span>{% endif %}
+</div>
+<div class="if-secret grid">{{ input("client_secret", "Paste the secret's Value") }}{{ input("client_secret_expires") }}</div>
+<div class="if-mi" style="gap:10px">{{ input("mi_client_id", "Empty: the system-assigned identity", mono=True) }}
+<span class="hint">Works only while WAF Inventory runs on an Azure VM, VM scale set or container with that identity attached. No secret is stored.</span></div>
+<div class="if-login"><span class="hint">Uses the Azure CLI login or AZURE_* environment variables of the account running WAF Inventory.</span></div>
+<div class="dash"><b>Permissions the app needs</b>
+<span style="color:var(--ink-2)"><b>Reader</b> on each subscription (or resource group) with gateways or Front Door profiles. <b>Log Analytics Reader</b> on each workspace that receives their logs, if you want traffic.</span></div>
 </section>
-{% endif %}
+
+<section class="card pad">{{ step(3, "Test and choose what to read") }}
+<div class="actions"><button class="primary" name="then" value="test">Save and test</button>
+<span class="hint">Signs in and lists what the app can read. After a passing test, tick subscriptions and workspaces from the list.</span></div>
+<div class="grid">{{ input("subscriptions", area=True) }}{{ input("log_workspaces", area=True) }}</div>
+{{ input("log_days") }}
+</section>
+{{ schedule(4) }}
+
+{% elif f5 %}
+<section class="card pad">{{ step(1, "Device") }}
+{{ name_field }}
+<div class="lbl">Connect with
+<div class="opts">{% for kind, label, tag, tone, desc in (("f5_rest", "REST API", "Recommended", "ok", "iControl REST with a read-only Auditor account."), ("f5_ssh", "SSH", "Fallback", "warn", "Read-only tmsh list commands where REST is blocked."), ("f5_offline", "Offline files", "No network", "neu", "Upload a UCS or bigip.conf and ASM policy exports.")) if new or kind == sc.type %}
+<a class="opt {{ 'on' if kind == sc.type }}" href="/sources/new/{{ kind }}" {{ 'aria-current=page' if kind == sc.type }}><b>{{ label }} <span class="pill {{ tone }}">{{ tag }}</span></b><span>{{ desc }}</span></a>{% endfor %}</div></div>
+</section>
 
 {% if sc.type == "f5_rest" %}
-<section class="panel"><h2>Device certificate</h2>
-{% if sc.settings.ca_fingerprint %}<p>Trusted, and only this one:</p>
-<dl class="kv"><dt>Subject</dt><dd>{{ sc.settings.ca_subject }}</dd><dt>Expires</dt><dd>{{ sc.settings.ca_expires }}</dd>
-<dt>SHA-256</dt><dd><code>{{ sc.settings.ca_fingerprint }}</code></dd></dl>
-{% else %}<p class="muted">Not pinned: the BIG-IP must present a certificate from a publicly trusted CA. Most use a self-signed one, so fetch and trust it.</p>{% endif %}
-{% if fetched %}
-<h2>Certificate the device presents now</h2>
-<dl class="kv"><dt>Subject</dt><dd>{{ fetched.subject }}</dd><dt>Expires</dt><dd>{{ fetched.expires }}</dd>
-<dt>SHA-256</dt><dd><code>{{ fetched.fingerprint }}</code></dd></dl>
-<p class="muted">Compare it on the BIG-IP before trusting it, e.g. in its shell:<br>
-<code>openssl x509 -in /config/httpd/conf/ssl.crt/server.crt -noout -fingerprint -sha256</code></p>
-<form method="post" action="/sources/{{ sc.id }}/f5/trust-cert"><input type="hidden" name="csrf" value="{{ csrf }}">
+<section class="card pad">{{ step(2, "REST API (iControl REST)") }}
+<div style="display:grid;grid-template-columns:minmax(0,3fr) minmax(90px,1fr);gap:14px">{{ input("host", "10.10.0.10 or bigip01.corp.example.com", mono=True) }}{{ input("port", mono=True) }}</div>
+<div class="grid" style="--min:260px">{{ input("username", "e.g. auditor-waf") }}{{ input("password") }}</div>
+{{ box("token", fields.token.label, fields.token.help ~ " BIG-IP tokens last 20 minutes.", rec=True) }}
+{{ box("export", fields.export.label, fields.export.help) }}
+<div style="max-width:440px">{{ input("partitions", "Empty: all partitions. Or e.g. Common, DMZ") }}</div>
+<div class="box">
+<div class="row"><div class="cell" style="flex:1 1 300px"><b>Device certificate</b><span class="hint">Pin the certificate the BIG-IP presents, so a look-alike device can't receive the password.</span></div>
+<button name="then" value="fetch-cert">Fetch certificate</button></div>
+{% if sc.settings.ca_fingerprint %}<p style="margin:0">Trusted, and only this one:</p>
+<dl class="kv"><dt>Subject</dt><dd>{{ sc.settings.ca_subject }}</dd><dt>Expires</dt><dd>{{ sc.settings.ca_expires }}</dd><dt>SHA-256</dt><dd class="mono">{{ sc.settings.ca_fingerprint }}</dd></dl>
+{% elif not fetched %}<span class="hint">Not pinned: the BIG-IP must then present a certificate from a publicly trusted CA. Most use a self-signed one, so fetch and trust it.</span>{% endif %}
+{% if fetched %}<b>Certificate the device presents now</b>
+<dl class="kv"><dt>Subject</dt><dd class="mono">{{ fetched.subject }}</dd><dt>Valid until</dt><dd class="mono">{{ fetched.expires }}</dd><dt>SHA-256</dt><dd class="mono">{{ fetched.fingerprint }}</dd></dl>
+<span class="hint">Compare it on the BIG-IP before trusting it, e.g. in its shell: <code>openssl x509 -in /config/httpd/conf/ssl.crt/server.crt -noout -fingerprint -sha256</code></span>
 <input type="hidden" name="pem" value="{{ fetched.pem }}"><input type="hidden" name="fingerprint" value="{{ fetched.fingerprint }}">
-<button class="primary">The fingerprints match: trust this certificate</button></form>
-{% else %}<div class="actions">{{ post("/sources/" ~ sc.id ~ "/f5/fetch-cert", "Fetch certificate") }}</div>{% endif %}
+<div class="actions"><button class="primary" formaction="/sources/{{ sc.id }}/f5/trust-cert">The fingerprints match: trust this certificate</button></div>{% endif %}
+</div>
+</section>
+
+{% elif sc.type == "f5_ssh" %}
+<section class="card pad">{{ step(2, "SSH") }}
+<div class="attn warn"><div class="cell"><b>Use SSH only where REST is blocked</b><span style="color:var(--ink-2)">It runs read-only tmsh list commands. ASM policy detail is limited to what tmsh shows; for full policies use REST or upload policy exports.</span></div></div>
+<div style="display:grid;grid-template-columns:minmax(0,3fr) minmax(90px,1fr);gap:14px">{{ input("host", "10.10.0.10 or bigip02.corp.example.com", mono=True) }}{{ input("port", mono=True) }}</div>
+<div style="max-width:440px">{{ input("username", "e.g. auditor-waf") }}</div>
+<div class="lbl">Sign in with
+<div class="seg" role="radiogroup" aria-label="SSH sign-in">{% for val, label in fields.ssh_auth.choices %}<label><input type="radio" name="ssh_auth" value="{{ val }}" {{ checked(sc.settings.ssh_auth == val) }}><span>{{ label }}</span></label>{% endfor %}</div></div>
+<div class="if-key" style="gap:14px">{{ input("ssh_key", "-----BEGIN OPENSSH PRIVATE KEY-----", area=True) }}<div style="max-width:440px">{{ input("ssh_passphrase") }}</div></div>
+<div class="if-pw" style="max-width:440px">{{ input("password") }}</div>
+<div style="max-width:440px">{{ input("partitions", "Empty: all partitions. Or e.g. Common, DMZ") }}</div>
+<div class="box">
+<div class="row"><div class="cell" style="flex:1 1 300px"><b>Host key</b><span class="hint">Pin the device's SSH host key. A changed key stops the connection.</span></div>
+<button name="then" value="fetch-key">Fetch host key</button></div>
+{% if sc.settings.host_key_fingerprint %}<span>Trusted: <span class="hint">{{ sc.settings.host_key.split()[0] }} · </span><span class="mono">{{ sc.settings.host_key_fingerprint }}</span></span>{% endif %}
+{% if fetched_key %}<b>Host key the device presents now</b>
+<span><span class="hint">{{ fetched_key.type }} · </span><span class="mono">{{ fetched_key.fingerprint }}</span></span>
+<span class="hint">Compare it on the BIG-IP: <code>ssh-keygen -lf /config/ssh/ssh_host_ed25519_key.pub</code></span>
+<input type="hidden" name="key_type" value="{{ fetched_key.type }}"><input type="hidden" name="key" value="{{ fetched_key.key }}"><input type="hidden" name="fingerprint" value="{{ fetched_key.fingerprint }}">
+<div class="actions"><button class="primary" formaction="/sources/{{ sc.id }}/ssh/trust-key">The fingerprints match: trust this host key</button></div>{% endif %}
+</div>
+</section>
+
+{% else %}
+<section class="card pad">{{ step(2, "Offline files") }}
+<label class="drop"><svg width="28" height="28" viewBox="0 0 16 16" fill="none" stroke="var(--accent)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 11V3M5 6l3-3 3 3M3 11v2h10v-2"/></svg>
+<b>Choose files</b><span class="hint">A UCS archive (.ucs), or bigip.conf (or tmsh list output) plus ASM policy exports (.json)</span>
+<input type="file" name="files" multiple accept=".ucs,.conf,.txt,.json" style="max-width:280px"></label>
+<div style="max-width:520px">{{ input("path", "/data/f5/dc1-bigip01", mono=True) }}</div>
 </section>
 {% endif %}
+{{ test_step(3) }}
+{{ schedule(4) }}
 
-{% if recent %}<section class="panel"><h2>Recent jobs</h2><ul>
-{% for j in recent %}<li><a href="/jobs/{{ j.id }}">{{ (j.started or j.created).strftime("%d %b %H:%M") }}</a>
-<span class="b {{ 'detect' if j.status in ('queued', 'running') else j.status }}">{{ j.status }}</span> {{ j.summary or "" }}</li>{% endfor %}</ul></section>{% endif %}
+{% else %}
+<section class="card pad">{{ step(1, title) }}
+{{ name_field }}
+{% for key in fields %}{{ input(key, mono=True) }}{% endfor %}
+</section>
+{{ test_step(2) }}
+{{ schedule(3) }}
+{% endif %}
 
-<section class="panel stack"><h2>Delete source</h2>
-<p class="muted">Removes the source, its stored credentials and its inventory data. Job history stays.</p>
+<div class="actions end"><a class="btn" href="/sources">Cancel</a><button class="primary">{{ "Save connection" if new else "Save" }}</button></div>
+</form>
+
+{% if not new %}
+<section class="card pad"><h2>Check and collect</h2>
+<div class="actions"><form method="post" action="/sources/{{ sc.id }}/test"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Test connection</button></form>
+<form method="post" action="/sources/{{ sc.id }}/run"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="primary">Run now</button></form>
+<span class="hint">Test uses the saved settings. Run now collects everything.</span></div>
+{% if recent %}<ul style="margin:0;padding-left:18px">{% for j in recent %}<li><a href="/jobs/{{ j.id }}">{{ (j.started or j.created).strftime("%d %b %H:%M") }}</a>
+<span class="b {{ j.status }}">{{ j.status }}</span> {{ j.summary or "" }}</li>{% endfor %}</ul>{% endif %}
+</section>
+
+<section class="card pad"><h2>Delete connection</h2>
+<p class="muted" style="margin:0">Removes the connection, its stored credentials and its inventory data. Job history stays.</p>
 {% if delete_error %}<p class="alert" role="alert">{{ delete_error }}</p>{% endif %}
-<form method="post" action="/sources/{{ sc.id }}/delete"><input type="hidden" name="csrf" value="{{ csrf }}">
-<label>Your password, to confirm<input type="password" name="password" autocomplete="current-password" required></label>
+<form class="actions" method="post" action="/sources/{{ sc.id }}/delete" style="align-items:end"><input type="hidden" name="csrf" value="{{ csrf }}">
+<label class="lbl" style="flex:1 1 260px;max-width:360px">Your password, to confirm<input class="in" type="password" name="password" autocomplete="current-password" required></label>
 <button class="danger">Delete {{ sc.name }}</button></form>
 </section>
-{% else %}
-<section class="panel"><h2>What happens next</h2>
-<p class="muted">After you add the source, test the connection{% if sc.type == "azure" %}. With certificate sign-in, a certificate is made for you to upload to the app registration{% elif sc.type == "f5_rest" %} and trust the device's certificate{% endif %}. Credentials are encrypted as soon as they are saved and are never shown again.</p>
-</section>
 {% endif %}
-</div>
-</div>
 {% endblock %}

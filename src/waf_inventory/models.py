@@ -24,6 +24,7 @@ class Source(Base):
     gateways: Mapped[list[Gateway]] = relationship(back_populates="source", cascade="all, delete-orphan")
     policies: Mapped[list[WafPolicy]] = relationship(back_populates="source", cascade="all, delete-orphan")
     endpoints: Mapped[list[Endpoint]] = relationship(back_populates="source", cascade="all, delete-orphan")
+    events: Mapped[list[WafEvent]] = relationship(cascade="all, delete-orphan")
 
 
 class Gateway(Base):
@@ -110,6 +111,49 @@ class Endpoint(Base):
     path_params: Mapped[dict] = mapped_column(JSON, default=dict)  # name -> type
     samples: Mapped[list] = mapped_column(JSON, default=list)  # a few raw paths, query stripped
     source: Mapped[Source] = relationship(back_populates="endpoints")
+
+
+class WafEvent(Base):
+    """A request a WAF rule matched (Baffin Bay), kept for tuning. Of the headers only Host and User-Agent are kept."""
+    __tablename__ = "waf_event"
+    id: Mapped[str] = mapped_column(primary_key=True)  # the vendor's event id
+    source_id: Mapped[int] = mapped_column(ForeignKey("source.id"), index=True)
+    time: Mapped[str] = mapped_column(index=True)  # ISO 8601, UTC
+    proxy: Mapped[str | None]  # the vendor's id of the proxy (= WafPolicy.native_id)
+    host: Mapped[str]
+    method: Mapped[str | None]
+    path: Mapped[str]  # query string dropped
+    status: Mapped[int | None]  # what the client got: the WAF's 403 when blocked, the application's answer when only logged
+    action: Mapped[str | None]  # BLOCKED | LOGGED
+    instance: Mapped[str] = mapped_column(default="main")  # main | staging
+    rules: Mapped[list] = mapped_column(JSON, default=list)  # [{"id": "942100", "name": ...}]
+    matched: Mapped[list] = mapped_column(JSON, default=list)  # matched data, when the proxy records it
+    source_ip: Mapped[str | None]
+    country: Mapped[str | None]
+    user_agent: Mapped[str | None]
+    support_id: Mapped[str | None] = mapped_column(index=True)
+
+
+class TuningDecision(Base):
+    """An administrator's answer to one tuning proposal, keyed by proxy + rule + path template."""
+    __tablename__ = "tuning_decision"
+    key: Mapped[str] = mapped_column(primary_key=True)
+    decision: Mapped[str]  # approved | rejected
+    user: Mapped[str | None]
+    time: Mapped[datetime]
+
+
+class Change(Base):
+    """One difference between a source's previous snapshot and the new one."""
+    __tablename__ = "change"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    time: Mapped[datetime] = mapped_column(index=True)
+    source: Mapped[str]
+    kind: Mapped[str]  # added | removed | changed
+    what: Mapped[str]  # listener | route | policy
+    subject: Mapped[str]
+    detail: Mapped[str] = mapped_column(default="")
+    weakened: Mapped[bool] = mapped_column(default=False)  # blocking turned off, or a WAF policy taken away
 
 
 class Finding(Base):
@@ -227,16 +271,57 @@ def source(session: Session, name: str, kind: str) -> Source:
 
 
 def save_snapshot(session: Session, name: str, kind: str, gateways: list[Gateway], policies: list[WafPolicy]) -> Source:
-    """Replace a source's config (gateways, listeners, routes, policies) with a fresh snapshot."""
+    """Replace a source's config (gateways, listeners, routes, policies) with a fresh snapshot, recording what changed."""
     src = source(session, name, kind)
+    before = _facts(src) if src.last_run else None  # a first collection is not a change
     src.gateways = []
     src.policies = []
     session.flush()
     src.gateways = gateways
     src.policies = policies
     src.status, src.error, src.last_run = "ok", None, now()
+    if before is not None:
+        session.add_all(Change(time=src.last_run, source=name, **c) for c in diff(before, _facts(src)))
     session.commit()
     return src
+
+
+def _facts(src: Source) -> dict[str, dict]:
+    """"what|subject" -> the fields a change is reported on. JSON defaults apply only at insert, hence the `or []`."""
+    out = {f"policy|{p.vendor}: {p.name}": {"mode": p.mode, **(p.settings or {})} for p in src.policies}
+    for g in src.gateways:
+        for lst in g.listeners:
+            at = f"{g.name} / {lst.name}"
+            out[f"listener|{at}"] = {"protocol": lst.protocol, "port": lst.port, "hostnames": lst.hostnames or [],
+                                     "waf policy": lst.policy.name if lst.policy else None}
+            for r in lst.routes:
+                out[f"route|{at} / {r.name}"] = {"hosts": r.hosts or [], "paths": r.paths or [], "backend": r.backend,
+                                                 "waf policy": r.policy.name if r.policy else None}
+    return out
+
+
+def _short(v) -> str:
+    t = v if isinstance(v, str) else json.dumps(v, sort_keys=True, default=str)
+    return t if len(t) <= 80 else t[:77] + "..."
+
+
+def diff(before: dict[str, dict], after: dict[str, dict]) -> list[dict]:
+    out = []
+    for key in sorted(before.keys() | after.keys()):
+        what, subject = key.split("|", 1)
+        old, new = before.get(key), after.get(key)
+        if old == new:
+            continue
+        if old is None or new is None:
+            out.append({"kind": "added" if old is None else "removed", "what": what, "subject": subject, "detail": "",
+                        "weakened": old is not None and what == "policy" and old.get("mode") == "block"})
+            continue
+        fields = [f for f in sorted(old.keys() | new.keys()) if old.get(f) != new.get(f)]
+        out.append({"kind": "changed", "what": what, "subject": subject,
+                    "detail": "; ".join(f"{f}: {_short(old.get(f))} → {_short(new.get(f))}" for f in fields),
+                    "weakened": (old.get("mode") == "block" and new.get("mode") != "block")
+                                or (old.get("waf policy") is not None and new.get("waf policy") is None)})
+    return out
 
 
 def now() -> datetime:
