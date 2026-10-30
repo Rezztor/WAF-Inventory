@@ -78,7 +78,8 @@ def test_exports_over_http(client):
     assert wb.sheetnames == list(report.TABLES) and wb["endpoints"].max_row > 40
     assert load_workbook(io.BytesIO(c.get("/export/routes.xlsx").content)).sheetnames == ["routes"]
     html = c.get("/export/report.html").text
-    assert "WAF Inventory Report" in html and "fdwafcontoso" in html and "<script" not in html
+    assert "WAF posture report" in html and "fdwafcontoso" in html and "<script" not in html
+    assert "Fix plan, biggest gain first" in html and "How to fix" in html and "Posture score" in html
     doc = c.get("/export/openapi/api.contoso.com.json").json()
     assert "/v2/customers/{customer_id}" in doc["paths"] and "patch" in doc["paths"]["/v2/customers/{customer_id}"]
     assert c.get("/export/nope.csv").status_code == 404 and c.get("/export/routes.exe").status_code == 404

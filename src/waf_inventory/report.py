@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from . import tuning as _tuning_mod
 from .discovery import openapi
-from .models import Change, Endpoint, Finding, Gateway, Listener, Source, WafPolicy
+from .models import Change, Endpoint, Finding, Gateway, Listener, Source, WafPolicy, now
 
 TABLES = ("applications", "routes", "policies", "policy_settings", "endpoints", "findings", "tuning", "changes", "sources")
 env = Environment(loader=PackageLoader("waf_inventory"), autoescape=select_autoescape())
@@ -243,9 +243,14 @@ def _cell(v):
 
 
 def to_html(session: Session) -> str:
-    """Self-contained full-inventory report."""
+    """Self-contained report: the score and fix plan first, then recent changes and the full inventory."""
+    from importlib import metadata
+
+    from . import remedies  # remedies reads report's Inventory
     sheets = {n: table(session, n) for n in TABLES}
-    return env.get_template("report.html").render(summary=summary(session), sheets=sheets)
+    return env.get_template("report.html").render(summary=summary(session), sheets=sheets, plan=remedies.plan(session),
+                                                  trend=remedies.score_history(session), changes=sheets["changes"][:50],
+                                                  generated=now().strftime("%d %b %Y, %H:%M"), version=metadata.version("waf-inventory"))
 
 
 def all_sheets(session: Session) -> dict[str, list[dict]]:
