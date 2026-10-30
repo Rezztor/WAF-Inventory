@@ -168,6 +168,7 @@ def summary(s: Session) -> dict:
     findings = table(s, "findings")
     return {
         "applications": len({a["application"] for a in apps}),
+        "vendors": sorted({v for (v,) in s.query(Gateway.vendor).distinct()}),
         "gateways": s.query(Gateway).count(), "policies": s.query(WafPolicy).count(),
         "endpoints": s.query(Endpoint).count(), "api_endpoints": s.query(Endpoint).filter_by(kind="api").count(),
         "coverage": round(100 * sum(a["mode"] == "block" for a in web) / len(web)) if web else 0,

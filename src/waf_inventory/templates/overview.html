@@ -12,7 +12,7 @@
 </section>{% endif %}
 
 <section aria-label="Totals" class="grid" style="--min:200px;--gap:12px">
-<a class="card kpi" href="/t/applications"><span class="l">Applications</span><span class="n">{{ summary.applications }}</span><span class="d">across Azure and F5</span></a>
+<a class="card kpi" href="/t/applications"><span class="l">Applications</span><span class="n">{{ summary.applications }}</span><span class="d">{% set names = {"azure": "Azure", "f5": "F5", "baffinbay": "Baffin Bay"} %}{% if summary.vendors %}across {% for v in summary.vendors %}{{ names.get(v, v) }}{{ ", " if not loop.last }}{% endfor %}{% else %}none collected yet{% endif %}</span></a>
 <div class="card kpi"><span class="l">Blocking mode</span><span class="n">{{ summary.coverage }}%</span><span class="d">of web listeners</span></div>
 <a class="card kpi" href="/t/policies"><span class="l">WAF policies</span><span class="n">{{ summary.policies }}</span><span class="d">on {{ summary.gateways }} gateways</span></a>
 <a class="card kpi" href="/t/endpoints?kind=api"><span class="l">API endpoints</span><span class="n">{{ summary.api_endpoints }}</span><span class="d">of {{ summary.endpoints }} seen</span></a>
@@ -26,18 +26,18 @@
 <div class="legend">{% for key, color, label in (("block", "ok", "block"), ("detect", "warn", "detect only"), ("off", "line-2", "off"), ("unknown", "ink-3", "unknown"), ("none", "crit", "no WAF")) if m[key] or key in ("block", "detect", "none") %}
 <a href="/t/applications?mode={{ key }}" style="color:inherit;text-decoration:none"><span><i style="background:var(--{{ color }})"></i><b>{{ m[key] }}</b> {{ label }}</span></a>{% endfor %}</div>
 </div>
-<div class="card pad"><h2>Findings</h2>
-<div class="sev"><a href="/t/findings?severity=high" class="crit"><b>{{ summary.findings.high }}</b><span>High</span></a>
-<a href="/t/findings?severity=medium" class="warn"><b>{{ summary.findings.medium }}</b><span>Medium</span></a>
-<a href="/t/findings?severity=low" class="neu"><b style="color:var(--ink)">{{ summary.findings.low }}</b><span>Low</span></a></div>
-</div>
+{% set p = plan %}<a class="card score" href="/findings" style="color:inherit;text-decoration:none;padding:16px" aria-label="Posture score {{ p.score }} of 100: open the fix plan">
+<div class="ring {{ 'low' if p.score < 50 else 'mid' if p.score < 80 }}" style="--v:{{ p.score }};width:92px;height:92px"><div><b style="font-size:26px">{{ p.score }}</b><small>of 100</small></div></div>
+<div style="flex:1 1 160px;display:grid;gap:4px"><h2 style="margin:0">Posture score</h2><span class="muted">{{ p.passed }} of {{ p.checks }} checks pass · {{ p.issues | length }} issue{{ "s" if p.issues | length != 1 }} to fix</span>
+<span style="color:var(--accent);font-weight:600">Open the fix plan</span></div></a>
 </section>
 
 <section class="card" style="overflow:hidden">
-<div class="head"><h2>Top findings</h2><span class="grow"></span><a href="/t/findings" style="font-weight:600">All {{ summary.findings.high + summary.findings.medium + summary.findings.low }} findings</a></div>
-{% if top %}<div class="tw flush"><table><thead><tr><th>Severity</th><th>Finding</th><th>Subject</th></tr></thead>
-<tbody>{% for f in top %}<tr><td>{{ badge(f.severity) }}</td><td>{{ f.title }}</td><td class="mono">{{ f.subject }}</td></tr>{% endfor %}</tbody></table></div>
-{% else %}<p class="muted" style="padding:0 16px">No findings.</p>{% endif %}
+<div class="head"><h2>Fix these first</h2><span class="grow"></span><a href="/findings" style="font-weight:600">All {{ p.issues | length }} issues</a></div>
+<div class="list">{% for i in p.issues[:3] %}
+<a class="item" href="/findings#i{{ loop.index }}" style="color:inherit;text-decoration:none">{{ badge(i.severity) }}<b style="flex:1 1 240px">{{ i.action }}</b>
+<span class="muted">{{ i["items"] | length }} affected</span>{% if i.gain %}<span class="gain">+{{ i.gain }} point{{ "s" if i.gain != 1 }}</span>{% endif %}</a>
+{% else %}<div class="item muted">Nothing to fix. Every check passes.</div>{% endfor %}</div>
 </section>
 
 <section class="card" style="overflow:hidden">

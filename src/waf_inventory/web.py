@@ -18,7 +18,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
-from . import auth, f5, findings, jobs, report, sources, tls, tuning, vault
+from . import auth, f5, findings, jobs, remedies, report, sources, tls, tuning, vault
 from .models import (AuditLog, Endpoint, Finding, Job, Listener, Source, SourceConfig, TuningDecision, WafPolicy, connect, get_setting,
                      put_setting)
 
@@ -711,8 +711,13 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
         with session() as s:
             conns = connections(s)
             return page(request, "overview.html", problems=sources.problems(s, tls_cert()), active="", summary=report.summary(s),
-                        top=report.table(s, "findings")[:5], conns=conns,
+                        plan=remedies.plan(s), conns=conns,
                         last=max((r["inv"].last_run for r in conns if r["inv"] and r["inv"].last_run), default=None))
+
+    @app.get("/findings", response_class=HTMLResponse)
+    def fix_plan(request: Request):
+        with session() as s:
+            return page(request, "fix.html", active="findings", plan=remedies.plan(s))
 
     @app.get("/t/{name}", response_class=HTMLResponse)
     def table_page(name: str, request: Request):

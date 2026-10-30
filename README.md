@@ -11,6 +11,7 @@ A **read-only** tool for WAF products. It finds every web app and API published 
   - a self-contained HTML report
   - an OpenAPI 3.1 spec per host
   - posture findings: no WAF, detection-only mode, outdated rule sets, disabled rules, wildcard URLs, shadow/dormant APIs and more
+  - a **fix plan**: a posture score, and the findings grouped into issues ranked by how much fixing each one raises it, with why it matters and how to fix it on each vendor
 
 The design and research behind it are in [`docs/PLAN.md`](docs/PLAN.md) and [`docs/plan.html`](docs/plan.html).
 
