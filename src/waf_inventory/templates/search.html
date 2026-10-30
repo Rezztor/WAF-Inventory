@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Search · WAF Inventory{% endblock %}
+{% block heading %}Search{% endblock %}
+{% block sub %}<div class="sub">{% if q %}{{ groups | sum(attribute="total") }} result{{ "s" if groups | sum(attribute="total") != 1 }} for “{{ q }}”{% else %}Applications, WAF policies, findings, API endpoints, routes and connections{% endif %}</div>{% endblock %}
+{% block body %}
+{% for g in groups %}
+<section class="card" style="overflow:hidden">
+<div class="head"><h2>{{ g.name }}</h2><span class="hint">{{ g.total }}{% if g.total > g.rows | length %}, first {{ g.rows | length }} shown{% endif %}</span></div>
+<div class="list">{% for title, detail, link in g.rows %}<a class="hit" href="{{ link }}"><b>{{ title }}</b><span class="muted">{{ detail }}</span></a>{% endfor %}</div>
+</section>
+{% else %}{% if q %}<div class="card pad"><h2>Nothing matches “{{ q }}”</h2><p class="muted" style="margin:0">Check the spelling, or search one word. A Support ID from a block page opens its WAF event.</p></div>
+{% else %}<div class="card pad"><p class="muted" style="margin:0">Type a host, a policy, a rule, a path or a Support ID in the box above.</p></div>{% endif %}{% endfor %}
+{% endblock %}

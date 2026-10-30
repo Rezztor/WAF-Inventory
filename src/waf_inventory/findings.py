@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 
 from sqlalchemy.orm import Session
 
-from . import tuning
+from . import posture, tuning
 from .baffinbay import RISKY_METHODS
 from .discovery import glob_rx, template_rx
 from .models import Endpoint, Finding, Listener, WafPolicy
@@ -94,6 +94,8 @@ def run(session: Session, specs: Iterable[dict] = ()) -> list[Finding]:
     for proxy, n in sorted(todo.items()):
         add("tuning-candidates", "low", "Likely WAF false positives to review", f"baffinbay: {proxy}", f"{n} on the Tuning page")
     session.add_all(out)
+    session.commit()
+    posture.snapshot(session)
     session.commit()
     return out
 

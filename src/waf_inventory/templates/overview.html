@@ -3,14 +3,15 @@
 {% block sub %}<div class="sub">{{ "Last collection " ~ last.strftime("%d %b %Y, %H:%M") ~ " UTC" if last else "Nothing collected yet" }}</div>{% endblock %}
 {% block actions %}<form method="post" action="/jobs/run-all"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Run all now</button></form>{% endblock %}
 {% block body %}
-{% set p = posture %}{% set top = p.queue[0] if p.queue %}
+{% set p = posture %}{% set top = p.queue[0] if p.queue %}{% set t = p.trend %}
 {% if p.score is not none %}
 <section class="hero card" aria-label="Protection score">
 <div class="ring {{ p.tone }}-ring" role="img" aria-label="Protection score {{ p.score }} of 100: {{ p.grade }}">
 <svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="52"/><circle cx="60" cy="60" r="52" class="v" style="stroke-dasharray:{{ '%.1f' | format(p.score * 3.267) }} 326.7"/></svg>
 <div><b>{{ p.score }}</b><span>of 100</span></div></div>
 <div class="say">
-<span class="pill {{ p.tone }}">{{ p.grade }}</span>
+<div class="trend"><span class="pill {{ p.tone }}">{{ p.grade }}</span>{% if t %}<svg class="spark" viewBox="-1 0 122 28" role="img" aria-label="Score by day"><polyline points="{{ t.line }}"/></svg>
+{% if t.delta %}<span class="{{ 'up' if t.delta > 0 else 'down' }}">{{ "%+d" | format(t.delta) }}</span>{% else %}<span class="muted">No change</span>{% endif %}<span class="hint">since {{ t.since }}</span>{% endif %}</div>
 <h2 class="big">{% if p.counts.crit %}{{ p.counts.crit }} of {{ p.web }} web application{{ "s are" if p.web != 1 else " is" }} open to attacks{% elif p.counts.warn %}{{ p.counts.warn }} of {{ p.web }} web application{{ "s only detect" if p.web != 1 else " only detects" }} attacks{% else %}All {{ p.web }} web applications block attacks{% endif %}</h2>
 {% if top and top.gain %}<p>Best next fix, about +{{ top.gain }} point{{ "s" if top.gain != 1 }}: <a href="#fix">{{ top.title }}</a></p>{% endif %}
 <p class="hint">Each web application scores 100 if it blocks, 40 if it only detects, 0 with no WAF, minus 10 for each high and 3 for each medium finding on it. The score is their average.</p>
@@ -43,6 +44,11 @@
 <div class="attn {{ 'crit' if bad else 'warn' }}"><svg viewBox="0 0 16 16" aria-hidden="true">{% if bad %}<path d="M8 2l6.5 11.5h-13z"/><path d="M8 6.5v3M8 11.5v.01"/>{% else %}<circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/>{% endif %}</svg>
 <div class="cell" style="flex:1;color:var(--ink)">{{ text }}</div>
 <a class="btn" href="{{ link }}">Fix it</a></div>{% endfor %}
+</section>{% endif %}
+
+{% if t and (t.new or t.fixed) %}<section class="card" aria-label="What changed" style="overflow:hidden">
+<div class="head"><h2>What changed since {{ t.since }}</h2><span class="hint">High and medium findings: {{ t.new | length }} new, {{ t.fixed | length }} fixed</span></div>
+<div class="delta">{% for name, rows in (("New", t.new), ("Fixed", t.fixed)) if rows %}<div><h3>{{ name }}</h3><ul>{% for title, subject in rows[:5] %}<li><span>{{ title }}</span><span class="mono muted">{{ subject }}</span></li>{% endfor %}{% if rows | length > 5 %}<li class="muted">and {{ rows | length - 5 }} more</li>{% endif %}</ul></div>{% endfor %}</div>
 </section>{% endif %}
 
 <section class="card" id="fix" style="overflow:hidden">

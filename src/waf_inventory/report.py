@@ -5,6 +5,7 @@ import csv
 import io
 import json
 from fnmatch import fnmatchcase as fnmatch
+from urllib.parse import quote
 
 from jinja2 import Environment, PackageLoader, select_autoescape
 from openpyxl import Workbook
@@ -160,6 +161,27 @@ def _tuning(s: Session) -> list[dict]:
              "days": g["days"], "first": g["first"], "last": g["last"], "evidence": "; ".join(g["evidence"] + g["attack_signs"]),
              "proposal": f"exclude {g['proposal']['rule']} on {g['proposal']['match']}" if g["proposal"] else g["note"],
              "decision": g["decision"]} for g in _tuning_mod.groups(s)]
+
+
+def search(s: Session, q: str, limit: int = 12) -> list[dict]:
+    """Every word of `q` must appear in the row. Each group links to the row, or to its list filtered down to it."""
+    words = q.lower().split()
+
+    def hits(name: str) -> list[dict]:
+        return [r for r in table(s, name) if all(w in " ".join(str(v) for v in r.values()).lower() for w in words)]
+
+    apps = {a["application"]: a for a in hits("applications")}
+    found = {
+        "Applications": [(h, f"{a['gateway']} · {a['mode']}", f"/apps/{quote(h)}") for h, a in apps.items()],
+        "WAF policies": [(p["policy"], f"{p['vendor']} · {p['mode']}", f"/policy/{p['id']}") for p in hits("policies")],
+        "Findings": [(f["title"], f["subject"], f"/t/findings?subject={quote(f['subject'])}") for f in hits("findings")],
+        "API endpoints": [(f"{e['method']} {e['template']}", e["host"], f"/t/endpoints?host={quote(e['host'])}&template={quote(e['template'])}")
+                          for e in hits("endpoints")],
+        "Routes": [(f"{r['route']} {r['paths']}", r["gateway"], f"/t/routes?gateway={quote(r['gateway'])}&paths={quote(r['paths'])}")
+                   for r in hits("routes")],
+        "Connections": [(c["source"], f"{c['kind']} · {c['status']}", "/sources") for c in hits("sources")],
+    }
+    return [{"name": k, "total": len(v), "rows": v[:limit]} for k, v in found.items() if v]
 
 
 def summary(s: Session) -> dict:

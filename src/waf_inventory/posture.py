@@ -1,10 +1,14 @@
 """The Overview's two questions, answered from counted facts: how protected are we, and what do I fix first? No model, no guess."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from sqlalchemy.orm import Session
 
 from . import report
+from .models import get_setting, put_setting
 
+HISTORY_DAYS = 90
 MODE_POINTS = {"block": 100, "detect": 40, "unknown": 20, "off": 0, "none": 0}
 FINDING_COST = {"high": 10, "medium": 3, "low": 0}
 PUTS_IN_BLOCKING = {"no-waf", "waf-disabled", "detection-mode"}  # fixing one of these moves the application to blocking mode
@@ -67,6 +71,31 @@ def _grade(score: int) -> tuple[str, str]:
     return "Exposed", "crit"
 
 
+def snapshot(s: Session, day: str = "") -> None:
+    """Keep the day's score, and what was open on the last two days, so the Overview can say what changed. Runs after every recompute."""
+    day = day or datetime.now(timezone.utc).date().isoformat()
+    findings = report.table(s, "findings")
+    raw = _score(_tiles(s, findings))
+    if raw is None:
+        return
+    days = [d for d in get_setting(s, "posture_history").get("days", []) if d["day"] != day]
+    open_now = sorted({f"{f['title']}\t{f['subject']}" for f in findings if f["severity"] != "low"})[:500]
+    days = [{"day": d["day"], "score": d["score"]} for d in days[:-1]] + days[-1:] + [{"day": day, "score": round(raw), "open": open_now}]
+    put_setting(s, "posture_history", {"days": days[-HISTORY_DAYS:]})
+
+
+def _trend(s: Session) -> dict | None:
+    days = get_setting(s, "posture_history").get("days", [])
+    if len(days) < 2:
+        return None
+    last, before = days[-1], days[-2]
+    now, then = set(last.get("open", [])), set(before.get("open", []))
+    width = 120 / (len(days) - 1)
+    return {"delta": last["score"] - before["score"], "since": before["day"],
+            "line": " ".join(f"{i * width:.1f},{26 - d['score'] * .24:.1f}" for i, d in enumerate(days)),
+            "new": [x.split("\t") for x in sorted(now - then)], "fixed": [x.split("\t") for x in sorted(then - now)]}
+
+
 def view(s: Session) -> dict:
     findings = report.table(s, "findings")
     tiles = _tiles(s, findings)
@@ -93,4 +122,4 @@ def view(s: Session) -> dict:
     grade, tone = _grade(score) if score is not None else ("", "na")
     return {"score": score, "grade": grade, "tone": tone, "web": sum(t["scored"] for t in tiles), "counts": counts,
             "map": sorted(gateways.values(), key=lambda g: [t["state"] != "crit" for t in g["tiles"]][:1] + [g["name"]]),
-            "queue": queue[:6], "more": max(0, len(queue) - 6)}
+            "queue": queue[:6], "trend": _trend(s)}

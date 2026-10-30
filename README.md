@@ -6,7 +6,7 @@ A **read-only** tool for WAF products. It finds every web app and API published 
 - **F5 BIG-IP** (LTM + ASM / Advanced WAF): collected live over iControl REST, or offline from `bigip.conf` and ASM policy exports.
 - **Baffin Bay Threat Protection** (Mastercard): proxies, WAF settings and restrictions over its API, plus its WAF events for **false-positive tuning**.
 - **Output:**
-  - a web dashboard
+  - a web dashboard: a protection score with its daily trend, a map of every application by gateway, a fix-first queue ranked by the points each fix adds, what changed since the day before, and search across everything (a Support ID opens its WAF event)
   - CSV, JSON and Excel exports
   - a self-contained HTML report
   - an OpenAPI 3.1 spec per host

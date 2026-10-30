@@ -30,6 +30,7 @@
 <div class="main">
 <header class="top">
 <div style="min-width:0">{% block crumb %}{% endblock %}<h1>{% block heading %}{% endblock %}</h1>{% block sub %}{% endblock %}</div>
+<form class="search" action="/search" role="search"><input type="search" name="q" value="{{ q or '' }}" placeholder="Search hosts, policies, rules, Support IDs" aria-label="Search everything"></form>
 <span class="grow"></span>
 {% block actions %}{% endblock %}
 <form class="who" method="post" action="/logout"><span class="avatar" aria-hidden="true">{{ user[:2] }}</span><span>{{ user }}<small>Administrator</small></span>

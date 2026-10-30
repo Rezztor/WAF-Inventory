@@ -714,6 +714,14 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
                         posture=posture.view(s), conns=conns,
                         last=max((r["inv"].last_run for r in conns if r["inv"] and r["inv"].last_run), default=None))
 
+    @app.get("/search", response_class=HTMLResponse)
+    def search(request: Request, q: str = ""):
+        q = q.strip()[:200]
+        if re.fullmatch(r"[0-9a-fA-F]{32}", q):  # a Support ID from a user's block page
+            return RedirectResponse(f"/tuning?support_id={q}", status_code=303)
+        with session() as s:
+            return page(request, "search.html", active="", q=q, groups=report.search(s, q) if q else [])
+
     @app.get("/t/{name}", response_class=HTMLResponse)
     def table_page(name: str, request: Request):
         if name not in PAGES:

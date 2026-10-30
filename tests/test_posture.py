@@ -1,5 +1,6 @@
 """The Overview's protection score, map and fix-first queue."""
-from waf_inventory import posture
+from waf_inventory import posture, report
+from waf_inventory.models import get_setting, put_setting
 
 
 def test_score_is_the_average_of_counted_application_points(session):
@@ -41,3 +42,47 @@ def test_overview_shows_score_map_and_queue_without_a_script(client):
 def test_empty_console_points_to_connections(console):
     html = console.get("/").text
     assert "No applications yet" in html and "Protection map" not in html
+
+
+def test_trend_says_what_changed_since_the_day_before(session):
+    saved = get_setting(session, "posture_history")
+    try:
+        put_setting(session, "posture_history", {"days": [
+            {"day": "2026-10-01", "score": 30, "open": ["Gone\thost-a"]},
+            {"day": "2026-10-02", "score": 20, "open": ["Gone\thost-a"]}]})
+        posture.snapshot(session, "2026-10-03")
+        days = get_setting(session, "posture_history")["days"]
+        assert [("open" in d) for d in days] == [False, True, True]  # only the last two days keep their lists
+        t = posture.view(session)["trend"]
+        assert t["since"] == "2026-10-02" and t["delta"] == days[-1]["score"] - 20
+        assert t["fixed"] == [["Gone", "host-a"]] and t["new"]
+        assert len(t["line"].split()) == 3
+        posture.snapshot(session, "2026-10-03")  # a second run on the same day replaces the day
+        assert len(get_setting(session, "posture_history")["days"]) == 3
+    finally:
+        put_setting(session, "posture_history", saved)
+        session.commit()
+
+
+def test_no_trend_on_the_first_day(session):
+    saved = get_setting(session, "posture_history")
+    put_setting(session, "posture_history", {"days": [{"day": "2026-10-01", "score": 30}]})
+    assert posture.view(session)["trend"] is None
+    put_setting(session, "posture_history", saved)
+    session.commit()
+
+
+def test_search_finds_every_kind_of_thing_and_needs_every_word(session):
+    names = {g["name"]: g for g in report.search(session, "contoso")}
+    assert {"Applications", "Findings", "API endpoints"} <= set(names)
+    assert report.search(session, "shop.contoso.com api")[0]["rows"]
+    assert report.search(session, "no-such-thing-anywhere") == []
+
+
+def test_search_page_escapes_input_and_opens_support_ids(client):
+    html = client.get("/search", params={"q": "<script>alert(1)</script>"}).text
+    assert "<script>alert" not in html and "Nothing matches" in html
+    assert 'name="q"' in client.get("/").text
+    assert "waf-agw-shop-api" in client.get("/search", params={"q": "waf-agw-shop-api"}).text
+    r = client.get("/search", params={"q": "67f02707e74b581cabcf730b1a4b2284"}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/tuning?support_id=67f02707e74b581cabcf730b1a4b2284"

@@ -149,7 +149,16 @@ a.kpi{color:inherit;text-decoration:none} a.kpi:hover{border-color:var(--accent)
 .legend i{width:9px;height:9px;border-radius:2px} .legend b{color:var(--ink)}
 .sev{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 .sev a{display:grid;gap:2px;padding:10px 12px;border-radius:6px;text-decoration:none} .sev b{font-size:22px}
+.search{margin:0;flex:1 1 240px;max-width:380px;min-width:0}
+.search input{width:100%;min-height:36px;padding:6px 10px;border:1px solid var(--line-2);border-radius:6px;background:var(--surface-alt);color:var(--ink);font:13px var(--font-ui)}
+.search input:focus{outline:2px solid var(--accent);outline-offset:-1px;background:var(--surface)}
+.hit{display:grid;gap:1px;padding:10px 16px;text-decoration:none;color:var(--ink);overflow-wrap:anywhere} .hit:hover{background:var(--surface-alt);color:var(--ink)}
 /* Overview: score, map, fix-first queue */
+.spark{width:120px;height:28px;display:block} .spark polyline{fill:none;stroke:var(--accent);stroke-width:1.5;stroke-linejoin:round;stroke-linecap:round}
+.trend{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.up{color:var(--ok);font-weight:700} .down{color:var(--crit);font-weight:700}
+.delta{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:0 16px}
+.delta h3{padding:12px 16px 4px} .delta ul{list-style:none;margin:0;padding:0 16px 12px;display:grid;gap:6px;min-width:0} .delta li{display:grid;overflow-wrap:anywhere}
 .hero{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:24px;align-items:center;padding:20px 24px}
 .ring{position:relative;width:132px;height:132px;display:grid;place-items:center}
 .ring svg{position:absolute;inset:0;transform:rotate(-90deg)}
