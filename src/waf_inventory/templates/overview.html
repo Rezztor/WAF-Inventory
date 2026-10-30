@@ -3,6 +3,40 @@
 {% block sub %}<div class="sub">{{ "Last collection " ~ last.strftime("%d %b %Y, %H:%M") ~ " UTC" if last else "Nothing collected yet" }}</div>{% endblock %}
 {% block actions %}<form method="post" action="/jobs/run-all"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Run all now</button></form>{% endblock %}
 {% block body %}
+{% set p = posture %}{% set top = p.queue[0] if p.queue %}
+{% if p.score is not none %}
+<section class="hero card" aria-label="Protection score">
+<div class="ring {{ p.tone }}-ring" role="img" aria-label="Protection score {{ p.score }} of 100: {{ p.grade }}">
+<svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="52"/><circle cx="60" cy="60" r="52" class="v" style="stroke-dasharray:{{ '%.1f' | format(p.score * 3.267) }} 326.7"/></svg>
+<div><b>{{ p.score }}</b><span>of 100</span></div></div>
+<div class="say">
+<span class="pill {{ p.tone }}">{{ p.grade }}</span>
+<h2 class="big">{% if p.counts.crit %}{{ p.counts.crit }} of {{ p.web }} web application{{ "s are" if p.web != 1 else " is" }} open to attacks{% elif p.counts.warn %}{{ p.counts.warn }} of {{ p.web }} web application{{ "s only detect" if p.web != 1 else " only detects" }} attacks{% else %}All {{ p.web }} web applications block attacks{% endif %}</h2>
+{% if top and top.gain %}<p>Best next fix, about +{{ top.gain }} point{{ "s" if top.gain != 1 }}: <a href="#fix">{{ top.title }}</a></p>{% endif %}
+<p class="hint">Each web application scores 100 if it blocks, 40 if it only detects, 0 with no WAF, minus 10 for each high and 3 for each medium finding on it. The score is their average.</p>
+</div>
+<dl class="facts">
+<a href="/t/applications"><dt>Applications</dt><dd>{{ summary.applications }}</dd></a>
+<a href="/t/policies"><dt>WAF policies</dt><dd>{{ summary.policies }}</dd></a>
+<a href="/t/endpoints?kind=api"><dt>API endpoints</dt><dd>{{ summary.api_endpoints }}</dd></a>
+<a href="/t/findings?severity=high"><dt>High findings</dt><dd>{{ summary.findings.high }}</dd></a>
+</dl>
+</section>
+
+<section class="card map" aria-label="Protection map">
+<div class="head"><h2>Protection map</h2><span class="hint">Every published application. Open one to see what protects it.</span><span class="grow"></span>
+<div class="seg" role="radiogroup" aria-label="Show">
+{% for key, label, n in (("all", "All", p.counts.crit + p.counts.warn + p.counts.ok + p.counts.na), ("crit", "Open", p.counts.crit), ("warn", "Detect only", p.counts.warn), ("ok", "Blocking", p.counts.ok)) %}<label><input type="radio" name="show" id="show-{{ key }}" {{ "checked" if key == "all" }}><span>{{ label }} {{ n }}</span></label>{% endfor %}
+</div></div>
+<div class="gws">{% for g in p.map %}
+<div class="gw"><div class="gwh"><b>{{ g.name }}</b> <span class="hint">{{ g.vendor }}</span></div>
+<div class="tiles">{% for t in g.tiles %}<a class="tile s-{{ t.state }}" href="/apps/{{ t.host | urlencode }}"><span class="h">{{ t.host }}</span><span class="s">{{ t.label }}{% if t.high %} · {{ t.high }} high{% endif %}</span></a>{% endfor %}</div></div>{% endfor %}
+</div>
+</section>
+{% else %}
+<section class="card pad"><h2>No applications yet</h2><p class="muted" style="margin:0">Add a connection and run it. The protection score and map appear here.</p><div><a class="btn btn-p" href="/sources">Add a connection</a></div></section>
+{% endif %}
+
 {% if problems %}<h2>{{ problems | length }} thing{{ "s need" if problems | length > 1 else " needs" }} attention</h2>
 <section aria-label="Needs attention" class="grid" style="--min:320px;--gap:12px">
 {% for text, link in problems %}{% set bad = "failed" in text or "expired on" in text %}
@@ -11,33 +45,14 @@
 <a class="btn" href="{{ link }}">Fix it</a></div>{% endfor %}
 </section>{% endif %}
 
-<section aria-label="Totals" class="grid" style="--min:200px;--gap:12px">
-<a class="card kpi" href="/t/applications"><span class="l">Applications</span><span class="n">{{ summary.applications }}</span><span class="d">across Azure and F5</span></a>
-<div class="card kpi"><span class="l">Blocking mode</span><span class="n">{{ summary.coverage }}%</span><span class="d">of web listeners</span></div>
-<a class="card kpi" href="/t/policies"><span class="l">WAF policies</span><span class="n">{{ summary.policies }}</span><span class="d">on {{ summary.gateways }} gateways</span></a>
-<a class="card kpi" href="/t/endpoints?kind=api"><span class="l">API endpoints</span><span class="n">{{ summary.api_endpoints }}</span><span class="d">of {{ summary.endpoints }} seen</span></a>
-</section>
-
-<section class="grid" style="--min:380px;--gap:12px">
-{% set m = summary.modes %}{% set total = (m.block + m.detect + m.off + m.unknown + m.none) or 1 %}
-<div class="card pad"><h2>WAF mode of web listeners</h2>
-<div class="bar" role="img" aria-label="{{ m.block }} block, {{ m.detect }} detect, {{ m.off }} off, {{ m.none }} with no WAF, {{ m.unknown }} unknown">
-{% for key, color in (("block", "ok"), ("detect", "warn"), ("off", "line-2"), ("unknown", "ink-3"), ("none", "crit")) if m[key] %}<i style="width:{{ 100 * m[key] / total }}%;background:var(--{{ color }})"></i>{% endfor %}</div>
-<div class="legend">{% for key, color, label in (("block", "ok", "block"), ("detect", "warn", "detect only"), ("off", "line-2", "off"), ("unknown", "ink-3", "unknown"), ("none", "crit", "no WAF")) if m[key] or key in ("block", "detect", "none") %}
-<a href="/t/applications?mode={{ key }}" style="color:inherit;text-decoration:none"><span><i style="background:var(--{{ color }})"></i><b>{{ m[key] }}</b> {{ label }}</span></a>{% endfor %}</div>
-</div>
-<div class="card pad"><h2>Findings</h2>
-<div class="sev"><a href="/t/findings?severity=high" class="crit"><b>{{ summary.findings.high }}</b><span>High</span></a>
-<a href="/t/findings?severity=medium" class="warn"><b>{{ summary.findings.medium }}</b><span>Medium</span></a>
-<a href="/t/findings?severity=low" class="neu"><b style="color:var(--ink)">{{ summary.findings.low }}</b><span>Low</span></a></div>
-</div>
-</section>
-
-<section class="card" style="overflow:hidden">
-<div class="head"><h2>Top findings</h2><span class="grow"></span><a href="/t/findings" style="font-weight:600">All {{ summary.findings.high + summary.findings.medium + summary.findings.low }} findings</a></div>
-{% if top %}<div class="tw flush"><table><thead><tr><th>Severity</th><th>Finding</th><th>Subject</th></tr></thead>
-<tbody>{% for f in top %}<tr><td>{{ badge(f.severity) }}</td><td>{{ f.title }}</td><td class="mono">{{ f.subject }}</td></tr>{% endfor %}</tbody></table></div>
-{% else %}<p class="muted" style="padding:0 16px">No findings.</p>{% endif %}
+<section class="card" id="fix" style="overflow:hidden">
+<div class="head"><h2>Fix first</h2><span class="hint">Ranked by what each fix adds to the score, then by severity.</span><span class="grow"></span><a href="/t/findings" style="font-weight:600">All {{ summary.findings.high + summary.findings.medium + summary.findings.low }} findings</a></div>
+<ol class="queue">{% for g in p.queue %}
+<li><span class="rank" aria-hidden="true">{{ loop.index }}</span>
+<div class="cell"><b>{{ g.title }}</b>{% if g.fix %}<span class="muted">{{ g.fix }}</span>{% endif %}</div>
+<div class="nums">{{ badge(g.severity) }}{% if g.gain %}<span class="gain">+{{ g.gain }} point{{ "s" if g.gain != 1 }}</span>{% endif %}</div>
+<a class="btn" href="{{ g.link }}">{{ g.count }} item{{ "s" if g.count != 1 }}</a></li>
+{% else %}<li class="muted">No findings.</li>{% endfor %}</ol>
 </section>
 
 <section class="card" style="overflow:hidden">
