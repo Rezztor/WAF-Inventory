@@ -32,6 +32,7 @@
 <header class="top">
 <div style="min-width:0">{% block crumb %}{% endblock %}<h1>{% block heading %}{% endblock %}</h1>{% block sub %}{% endblock %}</div>
 <span class="grow"></span>
+<form class="find" method="get" action="/search" role="search"><input name="q" type="search" placeholder="Search hosts, policies, APIs" aria-label="Search" value="{{ q or '' }}"></form>
 {% block actions %}{% endblock %}
 <form class="who" method="post" action="/logout"><span class="avatar" aria-hidden="true">{{ user[:2] }}</span><span>{{ user }}<small>Administrator</small></span>
 <input type="hidden" name="csrf" value="{{ csrf }}"><button>Sign out</button></form>

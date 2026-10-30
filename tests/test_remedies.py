@@ -40,3 +40,20 @@ def test_fix_plan_page_and_overview(client):
     home = client.get("/").text
     assert "Posture score" in home and "Fix these first" in home and 'href="/findings#i1"' in home
     assert "across Azure, Baffin Bay, F5" in home
+
+
+def test_application_verdict(client):
+    assert "Protected: every route is behind a blocking WAF" in client.get("/apps/api.contoso.com").text
+    shop = client.get("/apps/shop.contoso.com").text
+    assert "Partly protected" in shop and "detect only (waf-agw-shop-api)" in shop
+    assert "At risk" in client.get("/apps/partners.contoso.com").text
+
+
+def test_search(client):
+    page = client.get("/search", params={"q": "shop"}).text
+    assert "Applications (1)" in page and 'href="/apps/shop.contoso.com"' in page and "WAF policies (" in page
+    assert client.get("/search", params={"q": "partners.contoso"}, follow_redirects=False).status_code == 200  # a list
+    jump = client.get("/search", params={"q": "Partners.Contoso.com"}, follow_redirects=False)  # a full name: its page
+    assert jump.status_code == 303 and jump.headers["location"] == "/apps/partners.contoso.com"
+    assert client.get("/search", params={"q": "waf-agw-unused"}, follow_redirects=False).headers["location"].startswith("/policy/")
+    assert "Nothing matches" in client.get("/search", params={"q": "zzz-nothing"}).text

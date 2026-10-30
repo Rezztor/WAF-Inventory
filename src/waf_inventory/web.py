@@ -748,7 +748,29 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
             eps = s.query(Endpoint).filter_by(host=host).order_by(Endpoint.template).all()
             pols = {f"{p.vendor}: {p.name}" for l in listeners for p in [l.policy, *(r.policy for r in l.routes)] if p}
             found = [f for f in report.table(s, "findings") if host in f["subject"] or f["subject"] in pols]
-            return page(request, "app.html", active="applications", host=host, listeners=listeners, endpoints=eps, findings=found)
+            return page(request, "app.html", active="applications", host=host, listeners=listeners, endpoints=eps, findings=found,
+                        verdict=report.verdict(listeners))
+
+    @app.get("/search", response_class=HTMLResponse)
+    def search(request: Request, q: str = ""):
+        term = q.strip().lower()
+        with session() as s:
+            hits = {}
+            if term:
+                hits = {
+                    "Applications": [(f"/apps/{a}", a, "") for a in sorted({r["application"] for r in report.table(s, "applications")})
+                                     if term in a.lower()],
+                    "WAF policies": [(f"/policy/{r['id']}", r["policy"], f"{r['vendor']} · {r['mode']}") for r in report.table(s, "policies")
+                                     if term in r["policy"].lower()],
+                    "API endpoints": [(f"/apps/{e.host}", f"{e.method} {e.host}{e.template}", e.kind) for e in s.query(Endpoint)
+                                      if term in f"{e.method} {e.host}{e.template}".lower()][:100],
+                    "Fix plan": [(f"/findings#i{n}", i["action"], f"{len(i['items'])} affected") for n, i in enumerate(remedies.plan(s)["issues"], 1)
+                                 if term in i["action"].lower() or term in i["rule"] or any(term in x["subject"].lower() for x in i["items"])],
+                }
+                exact = [h for h in hits["Applications"] + hits["WAF policies"] if h[1].lower() == term]
+                if len(exact) == 1:  # a full hostname or policy name goes straight to its page
+                    return RedirectResponse(exact[0][0], status_code=303)
+            return page(request, "search.html", active="search", q=q, hits=hits, total=sum(map(len, hits.values())))
 
     @app.get("/policy/{pid}", response_class=HTMLResponse)
     def policy_detail(pid: int, request: Request):

@@ -50,6 +50,26 @@ class Inventory:
         return first, first.policy if first else None
 
 
+def verdict(listeners: list[Listener]) -> dict:
+    """Is an application protected? The worst of its routes: no WAF or WAF off is at risk, detect or unknown is partial."""
+    reasons: list[tuple[str, str]] = []
+    for lst in listeners:
+        at = f"{lst.gateway.name} / {lst.name}"
+        if not lst.waf_capable:
+            reasons.append(("warn", f"{at} is a layer-4 listener: no HTTP inspection"))
+            continue
+        for name, pol in [(r.name, r.policy) for r in lst.routes] or [("default", lst.policy)]:
+            mode = pol.mode if pol else "none"
+            if mode in ("none", "off"):
+                reasons.append(("crit", f"{at}, route {name}: {'no WAF policy' if mode == 'none' else 'the WAF policy is off'}"))
+            elif mode != "block":
+                reasons.append(("warn", f"{at}, route {name}: {'detect only' if mode == 'detect' else 'mode unknown'} ({pol.name})"))
+    tone = "crit" if any(t == "crit" for t, _ in reasons) else "warn" if reasons else "ok"
+    return {"tone": tone, "headline": {"ok": "Protected: every route is behind a blocking WAF", "warn": "Partly protected",
+                                       "crit": "At risk: requests reach the application uninspected"}[tone],
+            "reasons": [r for _, r in sorted(reasons, key=lambda x: x[0] != "crit")]}
+
+
 # ---------------------------------------------------------------- tables
 
 def _settings_summary(p: WafPolicy | None) -> str:
