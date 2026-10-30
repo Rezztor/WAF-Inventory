@@ -713,7 +713,7 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
             conns = connections(s)
             return page(request, "overview.html", problems=sources.problems(s, tls_cert()), active="", summary=report.summary(s),
                         plan=remedies.plan(s), trend=remedies.score_history(s), changes=report.table(s, "changes")[:5], conns=conns,
-                        last=max((r["inv"].last_run for r in conns if r["inv"] and r["inv"].last_run), default=None))
+                        map=report.protection_map(s), last=max((r["inv"].last_run for r in conns if r["inv"] and r["inv"].last_run), default=None))
 
     @app.get("/findings", response_class=HTMLResponse)
     def fix_plan(request: Request):

@@ -149,6 +149,18 @@ a.kpi{color:inherit;text-decoration:none} a.kpi:hover{border-color:var(--accent)
 .legend i{width:9px;height:9px;border-radius:2px} .legend b{color:var(--ink)}
 .sev{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 .sev a{display:grid;gap:2px;padding:10px 12px;border-radius:6px;text-decoration:none} .sev b{font-size:22px}
+/* Overview: protection map; the filter is radio buttons and :has(), so no script */
+.gws{padding:16px;display:grid;gap:16px} .gwh{margin-bottom:8px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:6px}
+.tile{display:grid;gap:1px;min-width:0;padding:8px 10px;border-radius:6px;text-decoration:none;color:var(--ink)}
+.tile:hover{color:var(--ink);box-shadow:inset 0 0 0 2px var(--ink-3)}
+.tile .h{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .tile .s{font-size:12px;font-weight:600}
+.s-crit{background:var(--crit-wash)} .s-crit .s{color:var(--crit)}
+.s-warn{background:var(--warn-wash)} .s-warn .s{color:var(--warn)}
+.s-ok{background:var(--ok-wash)} .s-ok .s{color:var(--ok);font-weight:400}
+.map:has(#show-crit:checked) .tile:not(.s-crit),.map:has(#show-warn:checked) .tile:not(.s-warn),.map:has(#show-ok:checked) .tile:not(.s-ok){display:none}
+.map:has(#show-crit:checked) .gw:not(:has(.s-crit)),.map:has(#show-warn:checked) .gw:not(:has(.s-warn)),.map:has(#show-ok:checked) .gw:not(:has(.s-ok)){display:none}
+@media (max-width:560px){.tiles{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}.gws{padding:12px}}
 form.f{display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin:0}
 form.f label{display:grid;gap:4px;font-size:12px;font-weight:600;color:var(--ink-2);min-width:150px}
 .ex{display:flex;flex-wrap:wrap;gap:8px;font-size:12.5px;color:var(--ink-3)}
