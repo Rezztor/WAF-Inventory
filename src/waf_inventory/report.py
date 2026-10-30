@@ -70,6 +70,28 @@ def verdict(listeners: list[Listener]) -> dict:
             "reasons": [r for _, r in sorted(reasons, key=lambda x: x[0] != "crit")]}
 
 
+def protection_map(s: Session) -> dict:
+    """Every application once, with the same verdict as its own page, grouped by gateway. The weakest come first."""
+    inv = Inventory(s)
+    label = {"crit": "At risk", "warn": "Partly protected", "ok": "Protected"}
+    gateways: dict[str, dict] = {}
+    seen: set[str] = set()
+    for a in _applications(s):
+        host = a["application"]
+        if host in seen:
+            continue
+        seen.add(host)
+        tone = verdict(inv.listeners_for(host) or [l for l in inv.listeners if f"{l.address or '*'}:{l.port or '*'}" == host])["tone"]
+        g = gateways.setdefault(a["gateway"], {"name": a["gateway"], "vendor": a["vendor"], "tiles": []})
+        g["tiles"].append({"host": host, "tone": tone, "label": label[tone]})
+    rank = {"crit": 0, "warn": 1, "ok": 2}
+    for g in gateways.values():
+        g["tiles"].sort(key=lambda t: (rank[t["tone"]], t["host"]))
+    tiles = [t for g in gateways.values() for t in g["tiles"]]
+    return {"gateways": sorted(gateways.values(), key=lambda g: (rank[g["tiles"][0]["tone"]], g["name"])),
+            "total": len(tiles), "counts": {k: sum(t["tone"] == k for t in tiles) for k in rank}}
+
+
 # ---------------------------------------------------------------- tables
 
 def _settings_summary(p: WafPolicy | None) -> str:

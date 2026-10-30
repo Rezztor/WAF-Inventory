@@ -33,6 +33,17 @@
 <span style="color:var(--accent);font-weight:600">Open the fix plan</span></div></a>
 </section>
 
+{% if map.total %}<section class="card map" aria-label="Protection map">
+<div class="head"><h2>Protection map</h2><span class="hint">Every published application. Open one to see why.</span><span class="grow"></span>
+<div class="seg" role="radiogroup" aria-label="Show">
+{% for key, label, n in (("all", "All", map.total), ("crit", "At risk", map.counts.crit), ("warn", "Partly", map.counts.warn), ("ok", "Protected", map.counts.ok)) %}<label><input type="radio" name="show" id="show-{{ key }}" {{ "checked" if key == "all" }}><span>{{ label }} {{ n }}</span></label>{% endfor %}
+</div></div>
+<div class="gws">{% for g in map.gateways %}
+<div class="gw"><div class="gwh"><b>{{ g.name }}</b> <span class="hint">{{ g.vendor }}</span></div>
+<div class="tiles">{% for t in g.tiles %}<a class="tile s-{{ t.tone }}" href="/apps/{{ t.host | urlencode }}"><span class="h">{{ t.host }}</span><span class="s">{{ t.label }}</span></a>{% endfor %}</div></div>{% endfor %}
+</div>
+</section>{% endif %}
+
 <section class="card" style="overflow:hidden">
 <div class="head"><h2>Fix these first</h2><span class="grow"></span><a href="/findings" style="font-weight:600">All {{ p.issues | length }} issues</a></div>
 <div class="list">{% for i in p.issues[:3] %}
