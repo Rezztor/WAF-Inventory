@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Changes · WAF Inventory{% endblock %}
+{% block heading %}Changes{% endblock %}
+{% block sub %}<div class="sub">What changed between collections, newest first</div>{% endblock %}
+{% block body %}
+{% set tone = {"added": "ok", "removed": "crit", "changed": "warn"} %}
+<nav class="tabs" aria-label="Filter">{% set q = "&source=" ~ source | urlencode if source else "" %}
+<a href="/changes{{ '?' ~ q[1:] if q }}" class="{{ 'on' if not weakened }}" {{ 'aria-current=page' if not weakened }}>All ({{ total }})</a>
+<a href="/changes?weakened=1{{ q }}" class="{{ 'on' if weakened }}" {{ 'aria-current=page' if weakened }}>Weakened protection ({{ weak }})</a></nav>
+{% if sources | length > 1 or source %}<form class="f card pad" method="get" style="display:flex">{% if weakened %}<input type="hidden" name="weakened" value="1">{% endif %}
+<label>Connection<select name="source"><option value="">All</option>{% for x in sources %}<option {{ "selected" if x == source }}>{{ x }}</option>{% endfor %}</select></label>
+<button type="submit" class="primary">Filter</button></form>{% endif %}
+<div class="ex">Export: {% for fmt in ("csv", "json", "xlsx") %}<a href="/export/changes.{{ fmt }}{{ '?source=' ~ source | urlencode if source }}">{{ fmt | upper }}</a>{% endfor %}</div>
+{% set ns = namespace(day="") %}
+{% for r in rows %}{% if r.time[:10] != ns.day %}{% if not loop.first %}</div></section>{% endif %}{% set ns.day = r.time[:10] %}
+<div class="day">{{ ns.day }}</div><section class="card" style="overflow:hidden"><div class="list">{% endif %}
+<div class="item" style="align-items:flex-start"><span class="muted mono" style="flex:0 0 44px">{{ r.time[11:] }}</span>
+<span class="pill {{ tone[r.change] }}" style="flex:none">{{ r.change }}</span>{% if r.weakened %}<span class="pill crit" style="flex:none">weakened</span>{% endif %}
+<div style="flex:1 1 300px;min-width:0;display:grid;gap:2px"><span><span class="muted">{{ r.what }}</span> <b class="mono" style="overflow-wrap:anywhere">{{ r.subject }}</b> <span class="muted">· {{ r.source }}</span></span>
+{% if r.detail %}<span class="mono hint" style="overflow-wrap:anywhere">{{ r.detail }}</span>{% endif %}</div></div>
+{% if loop.last %}</div></section>{% endif %}
+{% else %}<p class="muted">{{ "Nothing weakened protection." if weakened else "No changes yet. Changes appear from the second collection of a connection on." }}</p>{% endfor %}
+{% endblock %}

@@ -143,6 +143,19 @@ class TuningDecision(Base):
     time: Mapped[datetime]
 
 
+class Change(Base):
+    """One difference between a source's previous snapshot and the new one."""
+    __tablename__ = "change"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    time: Mapped[datetime] = mapped_column(index=True)
+    source: Mapped[str]
+    kind: Mapped[str]  # added | removed | changed
+    what: Mapped[str]  # listener | route | policy
+    subject: Mapped[str]
+    detail: Mapped[str] = mapped_column(default="")
+    weakened: Mapped[bool] = mapped_column(default=False)  # blocking turned off, or a WAF policy taken away
+
+
 class Finding(Base):
     __tablename__ = "finding"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -258,16 +271,57 @@ def source(session: Session, name: str, kind: str) -> Source:
 
 
 def save_snapshot(session: Session, name: str, kind: str, gateways: list[Gateway], policies: list[WafPolicy]) -> Source:
-    """Replace a source's config (gateways, listeners, routes, policies) with a fresh snapshot."""
+    """Replace a source's config (gateways, listeners, routes, policies) with a fresh snapshot, recording what changed."""
     src = source(session, name, kind)
+    before = _facts(src) if src.last_run else None  # a first collection is not a change
     src.gateways = []
     src.policies = []
     session.flush()
     src.gateways = gateways
     src.policies = policies
     src.status, src.error, src.last_run = "ok", None, now()
+    if before is not None:
+        session.add_all(Change(time=src.last_run, source=name, **c) for c in diff(before, _facts(src)))
     session.commit()
     return src
+
+
+def _facts(src: Source) -> dict[str, dict]:
+    """"what|subject" -> the fields a change is reported on. JSON defaults apply only at insert, hence the `or []`."""
+    out = {f"policy|{p.vendor}: {p.name}": {"mode": p.mode, **(p.settings or {})} for p in src.policies}
+    for g in src.gateways:
+        for lst in g.listeners:
+            at = f"{g.name} / {lst.name}"
+            out[f"listener|{at}"] = {"protocol": lst.protocol, "port": lst.port, "hostnames": lst.hostnames or [],
+                                     "waf policy": lst.policy.name if lst.policy else None}
+            for r in lst.routes:
+                out[f"route|{at} / {r.name}"] = {"hosts": r.hosts or [], "paths": r.paths or [], "backend": r.backend,
+                                                 "waf policy": r.policy.name if r.policy else None}
+    return out
+
+
+def _short(v) -> str:
+    t = v if isinstance(v, str) else json.dumps(v, sort_keys=True, default=str)
+    return t if len(t) <= 80 else t[:77] + "..."
+
+
+def diff(before: dict[str, dict], after: dict[str, dict]) -> list[dict]:
+    out = []
+    for key in sorted(before.keys() | after.keys()):
+        what, subject = key.split("|", 1)
+        old, new = before.get(key), after.get(key)
+        if old == new:
+            continue
+        if old is None or new is None:
+            out.append({"kind": "added" if old is None else "removed", "what": what, "subject": subject, "detail": "",
+                        "weakened": old is not None and what == "policy" and old.get("mode") == "block"})
+            continue
+        fields = [f for f in sorted(old.keys() | new.keys()) if old.get(f) != new.get(f)]
+        out.append({"kind": "changed", "what": what, "subject": subject,
+                    "detail": "; ".join(f"{f}: {_short(old.get(f))} → {_short(new.get(f))}" for f in fields),
+                    "weakened": (old.get("mode") == "block" and new.get("mode") != "block")
+                                or (old.get("waf policy") is not None and new.get("waf policy") is None)})
+    return out
 
 
 def now() -> datetime:

@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_macros.html" import badge %}
+{% extends "base.html" %}{% from "_macros.html" import badge, spark, delta %}
 {% block heading %}Overview{% endblock %}
 {% block sub %}<div class="sub">{{ "Last collection " ~ last.strftime("%d %b %Y, %H:%M") ~ " UTC" if last else "Nothing collected yet" }}</div>{% endblock %}
 {% block actions %}<form method="post" action="/jobs/run-all"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Run all now</button></form>{% endblock %}
@@ -29,6 +29,7 @@
 {% set p = plan %}<a class="card score" href="/findings" style="color:inherit;text-decoration:none;padding:16px" aria-label="Posture score {{ p.score }} of 100: open the fix plan">
 <div class="ring {{ 'low' if p.score < 50 else 'mid' if p.score < 80 }}" style="--v:{{ p.score }};width:92px;height:92px"><div><b style="font-size:26px">{{ p.score }}</b><small>of 100</small></div></div>
 <div style="flex:1 1 160px;display:grid;gap:4px"><h2 style="margin:0">Posture score</h2><span class="muted">{{ p.passed }} of {{ p.checks }} checks pass · {{ p.issues | length }} issue{{ "s" if p.issues | length != 1 }} to fix</span>
+{{ delta(trend) }}{{ spark(trend) }}
 <span style="color:var(--accent);font-weight:600">Open the fix plan</span></div></a>
 </section>
 
@@ -39,6 +40,12 @@
 <span class="muted">{{ i["items"] | length }} affected</span>{% if i.gain %}<span class="gain">+{{ i.gain }} point{{ "s" if i.gain != 1 }}</span>{% endif %}</a>
 {% else %}<div class="item muted">Nothing to fix. Every check passes.</div>{% endfor %}</div>
 </section>
+
+{% if changes %}<section class="card" style="overflow:hidden">
+<div class="head"><h2>Recent changes</h2><span class="grow"></span><a href="/changes" style="font-weight:600">All changes</a></div>
+<div class="list">{% for r in changes %}<div class="item"><span class="pill {{ {'added': 'ok', 'removed': 'crit', 'changed': 'warn'}[r.change] }}">{{ r.change }}</span>{% if r.weakened %}<span class="pill crit">weakened</span>{% endif %}
+<span style="flex:1 1 260px;min-width:0;overflow-wrap:anywhere"><span class="muted">{{ r.what }}</span> <b class="mono">{{ r.subject }}</b></span><span class="muted">{{ r.time }}</span></div>{% endfor %}</div>
+</section>{% endif %}
 
 <section class="card" style="overflow:hidden">
 <div class="head"><h2>Connections</h2><span class="grow"></span><a href="/sources" style="font-weight:600">Manage connections</a></div>

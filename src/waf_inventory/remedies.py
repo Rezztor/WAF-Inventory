@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from .models import Finding, Gateway, WafPolicy
+from .models import Finding, Gateway, WafPolicy, get_setting, now, put_setting
 from .report import Inventory
 
 WEIGHT = {"high": 10, "medium": 4, "low": 1}
@@ -184,3 +185,17 @@ def plan(session: Session) -> dict:
     lost = sum(WEIGHT[checks[r][0]] for r in by if r in checks)
     return {"score": round(100 * (total - lost) / total), "checks": len(checks), "passed": len(set(checks) - set(by)),
             "issues": issues}
+
+
+def remember_score(session: Session) -> None:
+    """Add the current score to the history (90 points). Runs that finish within 10 minutes share one point."""
+    pts = get_setting(session, "score_history").get("points", [])
+    t = now()
+    if pts and (t - datetime.fromisoformat(pts[-1]["time"])).total_seconds() < 600:
+        pts = pts[:-1]
+    put_setting(session, "score_history", {"points": (pts + [{"time": t.isoformat(), "score": plan(session)["score"]}])[-90:]})
+    session.commit()
+
+
+def score_history(session: Session) -> list[dict]:
+    return get_setting(session, "score_history").get("points", [])

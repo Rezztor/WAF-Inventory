@@ -30,6 +30,7 @@ PAGES = {  # table -> (title, filter columns)
     "endpoints": ("API endpoints", ["host", "method", "template", "kind", "mode"]),
     "findings": ("Findings", ["severity", "rule", "subject"]),
     "tuning": ("Tuning", ["verdict", "proxy", "rule", "path"]),
+    "changes": ("Changes", ["source", "what", "subject", "weakened"]),
     "sources": ("Sources", ["source", "status"]),
 }
 PUBLIC = {"/login", "/healthz"}
@@ -711,13 +712,21 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
         with session() as s:
             conns = connections(s)
             return page(request, "overview.html", problems=sources.problems(s, tls_cert()), active="", summary=report.summary(s),
-                        plan=remedies.plan(s), conns=conns,
+                        plan=remedies.plan(s), trend=remedies.score_history(s), changes=report.table(s, "changes")[:5], conns=conns,
                         last=max((r["inv"].last_run for r in conns if r["inv"] and r["inv"].last_run), default=None))
 
     @app.get("/findings", response_class=HTMLResponse)
     def fix_plan(request: Request):
         with session() as s:
-            return page(request, "fix.html", active="findings", plan=remedies.plan(s))
+            return page(request, "fix.html", active="findings", plan=remedies.plan(s), trend=remedies.score_history(s))
+
+    @app.get("/changes", response_class=HTMLResponse)
+    def changes_page(request: Request, weakened: str = "", source: str = ""):
+        with session() as s:
+            rows = report.table(s, "changes", source=source)
+            return page(request, "changes.html", active="changes", rows=[r for r in rows if r["weakened"] or not weakened],
+                        total=len(rows), weak=sum(bool(r["weakened"]) for r in rows), weakened=weakened, source=source,
+                        sources=sorted({r["source"] for r in rows}))
 
     @app.get("/t/{name}", response_class=HTMLResponse)
     def table_page(name: str, request: Request):

@@ -12,9 +12,9 @@ from sqlalchemy.orm import Session
 
 from . import tuning as _tuning_mod
 from .discovery import openapi
-from .models import Endpoint, Finding, Gateway, Listener, Source, WafPolicy
+from .models import Change, Endpoint, Finding, Gateway, Listener, Source, WafPolicy
 
-TABLES = ("applications", "routes", "policies", "policy_settings", "endpoints", "findings", "tuning", "sources")
+TABLES = ("applications", "routes", "policies", "policy_settings", "endpoints", "findings", "tuning", "changes", "sources")
 env = Environment(loader=PackageLoader("waf_inventory"), autoescape=select_autoescape())
 
 
@@ -146,6 +146,12 @@ def _findings(s: Session) -> list[dict]:
     rows = [{"severity": f.severity, "rule": f.rule, "title": f.title, "subject": f.subject, "detail": f.detail}
             for f in s.query(Finding)]
     return sorted(rows, key=lambda r: (order.get(r["severity"], 9), r["rule"], r["subject"]))
+
+
+def _changes(s: Session) -> list[dict]:
+    return [{"time": c.time.strftime("%Y-%m-%d %H:%M"), "source": c.source, "change": c.kind, "what": c.what, "subject": c.subject,
+             "detail": c.detail, "weakened": "yes" if c.weakened else ""}
+            for c in s.query(Change).order_by(Change.time.desc(), Change.weakened.desc(), Change.id)]
 
 
 def _sources(s: Session) -> list[dict]:

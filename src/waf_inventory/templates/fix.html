@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_macros.html" import badge %}
+{% extends "base.html" %}{% from "_macros.html" import badge, spark, delta %}
 {% block title %}Fix plan · WAF Inventory{% endblock %}
 {% block heading %}Fix plan{% endblock %}
 {% block sub %}<div class="sub">What to fix first, why it matters and how, for your vendors</div>{% endblock %}
@@ -8,7 +8,8 @@
 <section class="card score" aria-label="Posture score">
 <div class="ring {{ 'low' if p.score < 50 else 'mid' if p.score < 80 }}" style="--v:{{ p.score }}" role="img" aria-label="Posture score {{ p.score }} of 100"><div><b>{{ p.score }}</b><small>of 100</small></div></div>
 <div style="flex:1 1 280px;display:grid;gap:6px">
-<h2 style="margin:0">{{ "All checks pass" if not n else "You pass " ~ p.passed ~ " of " ~ p.checks ~ " checks" }}</h2>
+<h2 style="margin:0">{{ "All checks pass" if not n else "You pass " ~ p.passed ~ " of " ~ p.checks ~ " checks" }} {{ delta(trend) }}</h2>
+{{ spark(trend) }}
 <span class="muted">The score is the share of checks that apply to your vendors and pass, weighted by severity. A check passes when nothing in the estate fails it.</span>
 {% if n %}<span>Start with: <a href="#i1">{{ p.issues[0].action }}</a>{% if p.issues[0].gain %}: <span class="gain">+{{ p.issues[0].gain }} point{{ "s" if p.issues[0].gain != 1 }}</span>{% endif %}.</span>{% endif %}
 </div>
