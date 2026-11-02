@@ -28,7 +28,7 @@ stty echo 2>/dev/null || true
 echo
 [ "$pw" = "$pw2" ] || { echo "Passwords do not match." >&2; exit 1; }
 
-docker compose pull --quiet
+docker compose pull --quiet || echo "Could not pull the image; using the local one (built with docker build)."
 # The password goes over stdin only: never on the command line, in the environment or on disk.
 printf '%s\n' "$pw" | docker compose run --rm -T --no-deps waf-inventory waf-inv reset-password "$user" --password-stdin
 unset pw pw2
