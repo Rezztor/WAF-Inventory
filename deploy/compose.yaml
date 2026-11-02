@@ -1,0 +1,19 @@
+# WAF Inventory on one host. First install: sh install.sh. Upgrade: docker compose pull && docker compose up -d
+services:
+  waf-inventory:
+    image: ghcr.io/rezztor/waf-inventory:${WAF_INV_VERSION:-latest}
+    restart: unless-stopped
+    ports: ["8443:8443"]
+    volumes: [waf-data:/data]
+    secrets: [master_key]  # encrypts stored credentials once sources are managed in the console
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+volumes:
+  waf-data:
+
+secrets:
+  master_key:
+    file: ./secrets/master_key

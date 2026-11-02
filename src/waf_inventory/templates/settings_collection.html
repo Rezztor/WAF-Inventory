@@ -1,0 +1,51 @@
+{% extends "_settings.html" %}
+{% block title %}Data collection · WAF Inventory{% endblock %}
+{% block settings %}
+<div class="cell" style="gap:4px"><h2 class="big">Data collection</h2>
+<p style="margin:0;color:var(--ink-2);max-width:62ch">When WAF Inventory pulls configuration and logs from your connections. Findings are recomputed after every run.</p></div>
+<form class="stack" method="post" action="/settings" style="gap:16px"><input type="hidden" name="csrf" value="{{ csrf }}">
+<button class="sr" tabindex="-1" aria-hidden="true">Save</button>
+<section class="card pad">
+<div class="cell"><h3 style="font-size:15px">Default schedule</h3><span class="hint">Used by every connection that doesn't set its own.</span></div>
+<div class="lbl">How often
+<div class="seg" role="radiogroup" aria-label="How often">{% for val, label in (("daily", "Daily"), ("weekly", "Weekly")) %}<label><input type="radio" name="schedule_every" value="{{ val }}" {{ "checked" if collection.every == val }}><span>{{ label }}</span></label>{% endfor %}</div></div>
+<div class="lbl if-weekly">On
+<div class="chips" role="radiogroup" aria-label="Day of the week">{% for d in days %}<label><input type="radio" name="schedule_day" value="{{ loop.index0 }}" {{ "checked" if collection.day == loop.index0 }}><span>{{ d[:3] }}</span></label>{% endfor %}</div></div>
+<div class="grid" style="--min:220px;max-width:640px">
+<label class="lbl">At<input class="in" type="time" name="schedule_at" value="{{ collection.at }}"></label>
+<label class="lbl">Time zone<select class="in" name="schedule_tz">{% for z in zones %}<option {{ "selected" if collection.tz == z }}>{{ z }}</option>{% endfor %}</select></label>
+</div>
+<div class="box" style="background:var(--accent-wash);border-color:transparent;gap:4px">
+<b style="color:var(--accent)">{{ "Weekly, " ~ days[collection.day] if collection.every == "weekly" else "Daily" }} at {{ collection.at }} ({{ collection.tz }})</b>
+<span style="color:var(--ink-2)">Next runs: {% for r in runs %}{{ r.strftime("%a %d %b, %H:%M") }} UTC{{ " · " if not loop.last }}{% else %}none{% endfor %}</span></div>
+</section>
+
+<section class="card list" style="overflow:hidden">
+<div class="pad" style="gap:2px;padding:16px 20px 12px"><h3 style="font-size:15px">Per connection</h3><span class="hint">Set a connection's own schedule on its page. It overrides the default.</span></div>
+{% for c in conns %}<div class="item" style="padding:12px 20px">
+<b style="flex:1 1 240px;min-width:0;overflow-wrap:anywhere">{{ c.name }}</b><span style="flex:1 1 200px;color:var(--ink-2)">{{ c.schedule }}</span>
+{% set every = (c.sc.settings.schedule or {}).every or "off" %}<span class="pill {{ 'neu' if every == 'default' else 'ok' }}">{{ "Default" if every == "default" else "Manual" if every == "off" else "Own" }}</span>
+<span style="flex:0 1 200px" class="muted">Next {{ c.next[:16] | replace("T", " ") ~ " UTC" if c.next else "not scheduled" }}</span>
+<a class="btn" href="/sources/{{ c.sc.id }}">Change</a></div>
+{% else %}<div class="item muted">No connections yet.</div>{% endfor %}
+</section>
+
+<section class="card pad"><h3 style="font-size:15px">When a run is missed or fails</h3>
+<label class="check"><input type="checkbox" name="catch_up" {{ "checked" if collection.catch_up }}><span><b>Run at start-up if a scheduled run was missed</b><br><span class="hint">For example when the server was off at the scheduled time.</span></span></label>
+<label class="check"><input type="checkbox" name="retry" {{ "checked" if collection.retry }}><span><b>Retry a failed run once, 15 minutes later</b><br><span class="hint">A second failure shows on Overview under Needs attention.</span></span></label>
+<label class="lbl" style="max-width:220px">Keep job history for (days)<input class="in" name="job_retention_days" value="{{ general.job_retention_days }}" inputmode="numeric"><span class="hint">The audit log is kept for good.</span></label>
+</section>
+
+<section class="card pad"><h3 style="font-size:15px">API discovery</h3>
+<div class="grid">
+<label class="lbl">Distinct values before a path segment becomes a parameter<input class="in" name="collapse_threshold" value="{{ general.collapse_threshold }}" inputmode="numeric">
+<span class="hint">/api/users/1, /api/users/2 … become /api/users/{id} once this many different values are seen.</span></label>
+<label class="lbl">Requests needed to count an endpoint as confirmed<input class="in" name="min_hits" value="{{ general.min_hits }}" inputmode="numeric"></label>
+</div>
+<span class="hint">Path overrides and OpenAPI specs for shadow-API findings still come from the config file, if there is one.</span>
+</section>
+
+<div class="actions end"><button class="primary">Save changes</button></div>
+</form>
+<div class="actions end"><form method="post" action="/jobs/run-all"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Run all now</button></form></div>
+{% endblock %}

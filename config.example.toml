@@ -41,3 +41,10 @@ export = true                          # declarative ASM export (needs TMOS 15.1
 # name = "siem-export"
 # type = "logs"
 # path = "logs/*.jsonl"
+
+# Baffin Bay Threat Protection is added in the console (Settings > Connections > Baffin Bay): it keeps the sign-in token,
+# which can be issued only every 12 hours. An offline file in the shape of examples/baffinbay/bundle.json also works:
+# [[sources]]
+# name = "baffinbay (offline)"
+# type = "baffinbay_bundle"
+# path = "exports/baffinbay.json"

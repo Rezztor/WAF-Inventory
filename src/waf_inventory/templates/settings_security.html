@@ -1,0 +1,36 @@
+{% extends "_settings.html" %}
+{% block settings %}
+<div class="layout">
+<div>
+<section class="panel"><h2>HTTPS certificate</h2>
+{% if not https %}<p class="muted">This console runs over plain HTTP (local development, or behind a reverse proxy that handles HTTPS).</p>
+{% elif current %}<dl class="kv"><dt>Issued to</dt><dd>{{ current.subject }}</dd><dt>Issued by</dt><dd>{{ "Self-signed" if current.self_signed else current.issuer }}</dd>
+<dt>Names</dt><dd>{{ current.names | join(", ") }}</dd><dt>Expires</dt><dd>{{ current.expires }}</dd>
+<dt>SHA-256</dt><dd><code>{{ current.fingerprint }}</code></dd></dl>{% endif %}
+</section>
+{% if https %}
+<section class="panel stack"><h2>Use a certificate from your internal CA</h2>
+<p class="muted">1. Make a request. The private key is created here and never leaves the server.</p>
+<form method="post" action="/settings/security/csr"><input type="hidden" name="csrf" value="{{ csrf }}">
+<label>DNS names and IP addresses the console is reached on<input name="names" value="{{ names or '' }}" placeholder="waf-inventory.corp.example, 10.0.0.5" required></label>
+<button>{{ "Make a new request" if pending else "Make a certificate request (CSR)" }}</button></form>
+{% if csr %}<label>Certificate request: send it to your CA<textarea rows="10" readonly>{{ csr }}</textarea></label>{% endif %}
+{% if pending or csr %}
+<p class="muted">2. Paste what the CA returns: the server certificate first, then any intermediate certificates.</p>
+<form method="post" action="/settings/security/install"><input type="hidden" name="csrf" value="{{ csrf }}">
+<label>Signed certificate (PEM)<textarea name="chain" rows="8" placeholder="-----BEGIN CERTIFICATE-----" required>{{ chain or '' }}</textarea></label>
+<button class="primary">Install certificate</button></form>
+<p class="muted">It is checked against the request's key and used for new connections straight away.</p>{% endif %}
+</section>
+{% endif %}
+</div>
+<div>
+<section class="panel"><h2>Sign-in</h2>
+<dl class="kv"><dt>Idle timeout</dt><dd>{{ idle }} minutes</dd><dt>Longest session</dt><dd>{{ absolute }} hours</dd>
+<dt>Failed sign-ins</dt><dd>After 5, attempts are delayed, doubling up to 15 minutes</dd>
+<dt>Passwords</dt><dd>At least 12 characters, stored as Argon2id hashes</dd></dl>
+<p class="muted">Forgotten password: on the host, <code>docker compose exec waf-inventory waf-inv reset-password &lt;user&gt;</code>.</p>
+</section>
+</div>
+</div>
+{% endblock %}

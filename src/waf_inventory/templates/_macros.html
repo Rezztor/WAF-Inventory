@@ -18,3 +18,10 @@
 </table></div>
 {% else %}<p class="muted">Nothing here yet.</p>{% endif %}
 {% endmacro %}
+
+{% macro spark(points, w=160, h=36) %}{% if points | length > 1 %}{% set step = w / (points | length - 1) %}
+<svg class="spark" viewBox="-2 -2 {{ w + 4 }} {{ h + 4 }}" width="{{ w }}" height="{{ h }}" role="img" aria-label="Score over the last {{ points | length }} runs: {{ points | map(attribute='score') | join(', ') }}">
+<polyline fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" points="{% for p in points %}{{ (loop.index0 * step) | round(1) }},{{ (h - p.score * h / 100) | round(1) }} {% endfor %}"/>
+{% set last = points[-1] %}<circle cx="{{ w }}" cy="{{ (h - last.score * h / 100) | round(1) }}" r="3" fill="currentColor"/></svg>{% endif %}{% endmacro %}
+
+{% macro delta(points) %}{% if points | length > 1 %}{% set d = points[-1].score - points[-2].score %}<span class="{{ 'gain' if d > 0 else 'loss' if d < 0 else 'muted' }}">{{ "+" if d > 0 }}{{ d if d else "no change" }}{{ " since the last run" if d }}</span>{% endif %}{% endmacro %}

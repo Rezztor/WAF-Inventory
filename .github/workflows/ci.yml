@@ -1,9 +1,11 @@
 name: CI
 
+# GitHub's own runners: free for a public repository, and a pull request from a fork runs there, not on our machines.
 on:
   push:
-    branches: [main]
+    branches: [main]  # a branch with a pull request is tested by the pull_request run
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -11,14 +13,13 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    container: python:${{ matrix.python }}-slim
+    timeout-minutes: 20
     strategy:
       matrix:
         python: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
       - run: pip install -e ".[test]" ruff==0.6.9
       - run: ruff check src tests
       - run: pytest -q

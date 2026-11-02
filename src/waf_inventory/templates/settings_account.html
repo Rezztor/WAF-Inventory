@@ -1,0 +1,11 @@
+{% extends "_settings.html" %}
+{% block settings %}
+<form class="panel stack" method="post" action="/settings/account" style="max-width:480px"><input type="hidden" name="csrf" value="{{ csrf }}">
+<h2>Change password for {{ user }}</h2>
+<label>Current password<input type="password" name="current" autocomplete="current-password" required></label>
+<label>New password<input type="password" name="new" autocomplete="new-password" minlength="12" required><small>At least 12 characters. A passphrase works well.</small></label>
+<label>New password again<input type="password" name="again" autocomplete="new-password" minlength="12" required></label>
+<div class="actions"><button class="primary">Change password</button></div>
+<p class="muted">This signs you out everywhere, including here.</p>
+</form>
+{% endblock %}

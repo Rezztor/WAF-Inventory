@@ -1,19 +1,48 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WAF Inventory Report</title>
+<title>WAF posture report</title>
 {% include "_style.html" %}
-</head><body>{% from "_macros.html" import grid %}
-<main>
-<h1>WAF Inventory Report</h1>
-<div class="cards">
-  <div class="card"><div class="n">{{ summary.applications }}</div><div class="l">applications</div></div>
-  <div class="card"><div class="n">{{ summary.coverage }}%</div><div class="l">web listeners in blocking mode</div></div>
-  <div class="card"><div class="n">{{ summary.policies }}</div><div class="l">WAF policies · {{ summary.gateways }} gateways</div></div>
-  <div class="card"><div class="n">{{ summary.api_endpoints }}</div><div class="l">API endpoints ({{ summary.endpoints }} total)</div></div>
-  <div class="card"><div class="n">{{ summary.findings.high }}</div><div class="l">high findings · {{ summary.findings.medium }} medium · {{ summary.findings.low }} low</div></div>
-</div>
-{% for name, rows in sheets.items() %}
-<h2>{{ name | replace("_", " ") | capitalize }} ({{ rows | length }})</h2>
+<style>.report{max-width:1100px;margin:0 auto;display:grid;gap:18px;padding:28px 22px}.report h3{margin:0;font-size:15px}
+@media print{body{background:#fff}.card{box-shadow:none;break-inside:avoid}.affected{max-height:none;overflow:visible}.report{padding:0}}</style>
+</head><body>{% from "_macros.html" import grid, badge, spark, delta %}
+<main class="report">
+<header><h1 style="margin:0;font-size:26px">WAF posture report</h1>
+<div class="muted">Generated {{ generated }} UTC{% if summary.vendors %} · {% set names = {"azure": "Azure", "f5": "F5 BIG-IP", "baffinbay": "Baffin Bay"} %}{% for v in summary.vendors %}{{ names.get(v, v) }}{{ ", " if not loop.last }}{% endfor %}{% endif %} · WAF Inventory {{ version }}</div></header>
+
+{% set p = plan %}
+<section class="card score" aria-label="Posture score">
+<div class="ring {{ 'low' if p.score < 50 else 'mid' if p.score < 80 }}" style="--v:{{ p.score }}" role="img" aria-label="Posture score {{ p.score }} of 100"><div><b>{{ p.score }}</b><small>of 100</small></div></div>
+<div style="flex:1 1 280px;display:grid;gap:6px"><h2 style="margin:0">Posture score {{ delta(trend) }}</h2>
+<span>{{ p.passed }} of {{ p.checks }} checks pass, {{ p.issues | length }} issue{{ "s" if p.issues | length != 1 }} to fix.</span>
+<span class="muted">The score is the share of checks that apply to these vendors and pass, weighted by severity (high 10, medium 4, low 1). A check passes when nothing in the estate fails it.</span>
+{{ spark(trend) }}</div>
+</section>
+
+<section class="grid" style="--min:200px;--gap:12px" aria-label="Totals">
+<div class="card kpi"><span class="l">Applications</span><span class="n">{{ summary.applications }}</span></div>
+<div class="card kpi"><span class="l">Blocking mode</span><span class="n">{{ summary.coverage }}%</span><span class="d">of web listeners</span></div>
+<div class="card kpi"><span class="l">WAF policies</span><span class="n">{{ summary.policies }}</span><span class="d">on {{ summary.gateways }} gateways</span></div>
+<div class="card kpi"><span class="l">API endpoints</span><span class="n">{{ summary.api_endpoints }}</span><span class="d">of {{ summary.endpoints }} seen</span></div>
+</section>
+
+<h2 style="margin:8px 0 0">Fix plan, biggest gain first</h2>
+{% for i in p.issues %}
+<section class="card pad" style="display:grid;gap:12px">
+<div class="row" style="gap:8px 12px">{{ badge(i.severity) }}<h3 style="flex:1 1 260px">{{ loop.index }}. {{ i.action }}</h3><span class="muted">{{ i["items"] | length }} affected</span>{% if i.gain %}<span class="gain">+{{ i.gain }} point{{ "s" if i.gain != 1 }}</span>{% endif %}</div>
+{% if i.why %}<p style="margin:0">{{ i.why }}</p>{% endif %}
+{% if i.fixes %}<div class="box"><b>How to fix</b><dl class="fix">{% for vendor, text in i.fixes %}<dt>{{ vendor }}</dt><dd>{{ text }}</dd>{% endfor %}</dl></div>{% endif %}
+<ul class="affected">{% for it in i["items"] %}<li><span class="mono">{{ it.subject }}</span>{% if it.detail %}<span class="muted">{{ it.detail }}</span>{% endif %}</li>{% endfor %}</ul>
+</section>
+{% else %}<p>Every check passes.</p>{% endfor %}
+
+{% if changes %}<h2 style="margin:8px 0 0">Recent changes</h2>
+<section class="card" style="overflow:hidden"><div class="list">{% for r in changes %}
+<div class="item" style="align-items:flex-start"><span class="muted mono" style="flex:0 0 130px">{{ r.time }}</span><span class="pill {{ {'added': 'ok', 'removed': 'crit', 'changed': 'warn'}[r.change] }}">{{ r.change }}</span>{% if r.weakened %}<span class="pill crit">weakened</span>{% endif %}
+<div style="flex:1 1 300px;min-width:0;display:grid;gap:2px"><span><span class="muted">{{ r.what }}</span> <b class="mono" style="overflow-wrap:anywhere">{{ r.subject }}</b></span>{% if r.detail %}<span class="mono hint" style="overflow-wrap:anywhere">{{ r.detail }}</span>{% endif %}</div></div>{% endfor %}</div></section>{% endif %}
+
+<h2 style="margin:8px 0 0">Appendix: full inventory</h2>
+{% for name, rows in sheets.items() if name != "changes" %}
+<h3>{{ name | replace("_", " ") | capitalize }} ({{ rows | length }})</h3>
 {{ grid(name, rows, links=False) }}
 {% endfor %}
 </main></body></html>
