@@ -23,7 +23,8 @@ def demo_db(tmp_path_factory) -> str:
     d = tmp_path_factory.mktemp("demo")
     shutil.copytree(EXAMPLES, d, dirs_exist_ok=True)
     cfg = d / "demo.toml"
-    cfg.write_text(cfg.read_text().replace('database = "demo.db"', f'database = "{d / "t.db"}"'))
+    db_path = (d / "t.db").as_posix()
+    cfg.write_text(cfg.read_text().replace('database = "demo.db"', f'database = "{db_path}"'))
     assert main(["-c", str(cfg), "collect"]) == 0
     return str(d / "t.db")
 

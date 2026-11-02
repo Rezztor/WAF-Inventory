@@ -155,14 +155,16 @@ def test_config_toml_sources_are_imported_once(tmp_path, master_key, monkeypatch
     tls.ensure_cert(tmp_path / "t")
     shutil.copy(tmp_path / "t" / "cert.pem", pem)
     cfg = tmp_path / "c.toml"
-    cfg.write_text(f'''database = "{tmp_path / 'x.db'}"
+    db_posix = (tmp_path / 'x.db').as_posix()
+    pem_posix = pem.as_posix()
+    cfg.write_text(f'''database = "{db_posix}"
 [[sources]]
 name = "bigip"
 type = "f5_rest"
 host = "192.0.2.1"
 username = "auditor"
 password_env = "F5_X"
-ca_cert = "{pem}"
+ca_cert = "{pem_posix}"
 [[sources]]
 name = "logs"
 type = "logs"

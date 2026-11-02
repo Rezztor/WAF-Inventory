@@ -2,6 +2,7 @@
 import csv
 import io
 import json
+from pathlib import Path
 
 from openpyxl import load_workbook
 
@@ -94,7 +95,8 @@ def test_exports_escape_formulas():
 
 def test_cli_exports(demo_db, tmp_path):
     cfg = tmp_path / "c.toml"
-    cfg.write_text(f'database = "{demo_db}"\n')
+    db_posix = Path(demo_db).as_posix()
+    cfg.write_text(f'database = "{db_posix}"\n')
     assert main(["-c", str(cfg), "export", "-f", "xlsx", "-o", str(tmp_path / "all.xlsx")]) == 0
     assert main(["-c", str(cfg), "export", "-f", "csv", "-t", "routes", "-o", str(tmp_path / "r.csv")]) == 0
     assert main(["-c", str(cfg), "export", "-f", "json", "-o", str(tmp_path / "all.json")]) == 0
@@ -108,7 +110,9 @@ def test_cli_exports(demo_db, tmp_path):
 def test_failing_source_is_recorded_and_others_continue(tmp_path, monkeypatch):
     monkeypatch.delenv("F5_X_PASSWORD", raising=False)
     cfg = tmp_path / "c.toml"
-    cfg.write_text(f'''database = "{tmp_path / 'x.db'}"
+    db_path = (tmp_path / 'x.db').as_posix()
+    csv_path = (tmp_path / 'l.csv').as_posix()
+    cfg.write_text(f'''database = "{db_path}"
 [[sources]]
 name = "broken"
 type = "f5_rest"
@@ -118,7 +122,7 @@ password_env = "F5_X_PASSWORD"
 [[sources]]
 name = "logs"
 type = "logs"
-path = "{tmp_path / 'l.csv'}"
+path = "{csv_path}"
 ''')
     (tmp_path / "l.csv").write_text("host,method,path,status,hits\nx.com,GET,/api/a,200,9\n")
     assert main(["-c", str(cfg), "collect"]) == 1

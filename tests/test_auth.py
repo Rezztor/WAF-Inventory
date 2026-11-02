@@ -1,5 +1,6 @@
 """Sign-in, sessions, CSRF, back-off, admin bootstrap and the HTTPS certificate."""
 import io
+import os
 from datetime import timedelta
 
 import pytest
@@ -66,7 +67,8 @@ def test_idle_session_expires(client, demo_db):
 
 def test_reset_password_and_serve_refuses_without_admin(tmp_path, monkeypatch):
     cfg = tmp_path / "c.toml"
-    cfg.write_text(f'database = "{tmp_path / "x.db"}"\n')
+    db_posix = (tmp_path / "x.db").as_posix()
+    cfg.write_text(f'database = "{db_posix}"\n')
     with pytest.raises(SystemExit, match="No admin account"):
         main(["-c", str(cfg), "serve"])
     monkeypatch.setattr("sys.stdin", io.StringIO("short\n"))
@@ -81,7 +83,9 @@ def test_reset_password_and_serve_refuses_without_admin(tmp_path, monkeypatch):
 def test_self_signed_then_internal_ca_certificate(tmp_path):
     cert, key = tls.ensure_cert(tmp_path)
     first = tls.fingerprint(cert)
-    assert key.stat().st_mode & 0o077 == 0 and tls.ensure_cert(tmp_path) == (cert, key)
+    assert tls.ensure_cert(tmp_path) == (cert, key)
+    if os.name == "posix":  # NTFS does not carry POSIX permission bits
+        assert key.stat().st_mode & 0o077 == 0
     csr = x509.load_pem_x509_csr(tls.make_csr(tmp_path, ["waf.corp.example"], ["10.0.0.5"]))
     with pytest.raises(ValueError, match="does not match"):
         tls.install_cert(tmp_path, cert.read_bytes())

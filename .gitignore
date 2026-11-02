@@ -6,3 +6,6 @@ config.toml
 openapi/
 waf-inventory*.*
 build/
+.secrets/
+*.db-shm
+*.db-wal
