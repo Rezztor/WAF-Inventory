@@ -1,10 +1,13 @@
 import json
 import re
+import time
+from datetime import datetime, timezone
 
 import httpx
 import pytest
 
-from waf_inventory import f5
+from waf_inventory import f5, findings
+from waf_inventory.models import connect, save_snapshot
 from conftest import EXAMPLES
 
 
@@ -100,6 +103,10 @@ ltm virtual Tenant/vs_v6 {
 
 ASM_FILE = (EXAMPLES / "f5" / "asm" / "app1_waf.json").read_bytes()
 IRULE = re.search(r"ltm rule /Common/irule_asm_intranet \{\n(.*?)\n\}\n", (EXAMPLES / "f5" / "bigip.conf").read_text(), re.S).group(1)
+NOW = time.time()
+NEAR = int((NOW + 10 * 86400) * 1000)  # sys/file/ssl-cert expirationDate: epoch milliseconds
+FAR = int((NOW + 400 * 86400) * 1000)
+NEAR_TEXT = datetime.fromtimestamp(NEAR / 1000, tz=timezone.utc).strftime("%b %d %H:%M:%S %Y GMT")
 REST = {
     "/mgmt/tm/sys/global-settings": {"hostname": "dc1-bigip01.corp.contoso.com"},
     "/mgmt/tm/sys/version": {"entries": {"https://localhost/mgmt/tm/sys/version/0": {"nestedStats": {"entries": {
@@ -128,7 +135,11 @@ REST = {
             {"name": "default", "actionsReference": {"items": [{"name": "0", "asm": True, "enable": True, "policy": "/Common/app1_waf"}]}}]}},
         {"fullPath": "/Common/Drafts/asm_app1_new", "status": "draft"}]},
     "/mgmt/tm/ltm/rule": {"items": [{"fullPath": "/Common/irule_asm_intranet", "apiAnonymous": IRULE}]},
-    "/mgmt/tm/ltm/profile/client-ssl": {"items": [{"fullPath": "/Common/clientssl-app1", "serverName": "app1.corp.contoso.com"}]},
+    "/mgmt/tm/ltm/profile/client-ssl": {"items": [
+        {"fullPath": "/Common/clientssl-app1", "serverName": "app1.corp.contoso.com", "ciphers": "DEFAULT:+RC4-SHA",
+         "options": ["dont-insert-empty-fragments"], "allowNonSsl": "enabled", "renegotiation": "enable",
+         "certKeyChain": [{"name": "app1_cert", "cert": "/Common/app1.corp.contoso.com.crt",
+                           "key": "/Common/app1.corp.contoso.com.key"}]}]},
     "/mgmt/tm/ltm/profile/http": {"items": [{"fullPath": "/Common/http"}, {"fullPath": "/Common/http-xff"}]},
     "/mgmt/tm/asm/policies": {"items": [
         {"id": "A1", "name": "app1_waf", "fullPath": "/Common/app1_waf", "enforcementMode": "blocking", "active": True,
@@ -141,6 +152,12 @@ REST = {
     "/mgmt/tm/asm/policies/A2/whitelist-ips": {"items": [{"ipAddress": "10.0.0.0", "ipMask": "255.0.0.0"}]},
     "/mgmt/tm/asm/policies/A2/signature-sets": {"items": [{"signatureSetReference": {"link": "https://localhost/mgmt/tm/asm/signature-sets/High%20Accuracy?ver=17"}, "block": True, "alarm": True}]},
     "/mgmt/tm/asm/policies/A2/blocking-settings/violations": {"items": [{"description": "Illegal URL", "block": False, "alarm": True}]},
+    "/mgmt/tm/sys/failover": {"apiRawValues": {"apiAnonymous": "Failover active for 2d 03:22:15\n"}},
+    "/mgmt/tm/sys/file/ssl-cert": {"items": [
+        {"fullPath": "/Common/app1.corp.contoso.com.crt", "expirationDate": NEAR, "expirationString": NEAR_TEXT,
+         "issuer": "CN=Contoso Internal CA", "keyType": "rsa-private", "certificateKeySize": 2048, "fingerprint": "AA:BB"},
+        {"fullPath": "/Common/legacy.corp.crt", "expirationDate": FAR, "expirationString": "Dec  1 12:00:00 2027 GMT",
+         "issuer": "CN=Contoso Internal CA", "keyType": "ec-private", "certificateKeySize": 256, "fingerprint": "CC:DD"}]},
 }
 PAGE2 = {"items": [{"id": "A3", "name": "intranet_waf", "fullPath": "/Common/intranet_waf", "enforcementMode": "blocking",
                     "active": True, "virtualServers": [], "type": "security"},
@@ -160,8 +177,16 @@ def bigip(monkeypatch):
             assert json.loads(req.content)["loginProviderName"] == "tmos"
             return httpx.Response(200, json={"token": {"token": "TKN"}})
         assert req.headers["X-F5-Auth-Token"] == "TKN"
+        if m == "PATCH":  # the client asks for a longer token life right after sign-in
+            log["patched"] = json.loads(req.content)
+            return httpx.Response(200, json={"timeout": 3600})
         if m == "DELETE":
             return httpx.Response(200, json={})
+        if log.get("failover") and p == "/mgmt/tm/sys/failover":
+            return httpx.Response(200, json={"apiRawValues": {"apiAnonymous": log["failover"]}})
+        if log.get("expired") and not log.get("relogged"):  # the token died mid-run
+            log["relogged"] = True
+            return httpx.Response(401, json={"message": "F5 OAuth token timeout"})
         if p == "/mgmt/tm/ltm/virtual" and log["busy"]:  # restjavad overloaded once
             log["busy"] = False
             return httpx.Response(503)
@@ -231,3 +256,69 @@ def test_truncated_export_fails_loudly(monkeypatch):
     c.login()
     with pytest.raises(json.JSONDecodeError):
         c.export_policy("A1")
+
+
+def test_token_life_extended_and_reissued_on_expiry(monkeypatch):
+    c, log = bigip(monkeypatch)
+    log["expired"] = True  # the first authenticated request is refused: the token died
+    c.login()
+    assert log["patched"] == {"timeout": 3600}  # the default 20-minute life was extended (F5 K43590271)
+    cfg, _ = f5.fetch_rest(c)
+    assert sum(1 for m, p in log["calls"] if p == "/mgmt/shared/authn/login") == 2  # signed in again mid-run
+    assert cfg["device"]["failover"] == "active"
+
+
+def test_standby_unit_is_reported(monkeypatch):
+    c, log = bigip(monkeypatch)
+    log["failover"] = "Failover standby for 0d 04:35:49\n"
+    c.login()
+    cfg, warnings = f5.fetch_rest(c)
+    assert cfg["device"]["failover"] == "standby"
+    assert any("standby" in w for w in warnings)
+
+
+def test_certificate_expiry_and_expiry_parsing():
+    iso = f5.expiry_iso(int((time.time() + 10.5 * 86400) * 1000), NEAR_TEXT)  # fresh, or the seconds since module load shave a day off
+    assert iso and (datetime.fromisoformat(iso) - datetime.now(timezone.utc)).days == 10
+    secs = f5.expiry_iso(int(NOW + 10 * 86400), "x")
+    assert secs and secs.startswith("20")  # seconds, not milliseconds
+    text = f5.expiry_iso(None, "Dec  1 12:00:00 2027 GMT")
+    assert text and text.startswith("2027-12-01")
+    assert f5.expiry_iso(None, None) is None
+
+
+def test_rest_tls_posture_and_certificate_findings(monkeypatch, tmp_path):
+    c, _ = bigip(monkeypatch)
+    c.login()
+    cfg, _ = f5.fetch_rest(c)
+    gws, pols = f5.build(cfg)
+    lst = {l.name: l for l in gws[0].listeners}["/Common/vs_app1_https"]
+    assert lst.tls["ciphers"] == "DEFAULT:+RC4-SHA" and lst.tls["allow_non_ssl"] is True
+    assert "/Common/app1.corp.contoso.com.crt" in lst.tls["certs"]
+    assert lst.tls["certs"]["/Common/app1.corp.contoso.com.crt"]["key_size"] == 2048
+
+    s = connect(str(tmp_path / "t.db"))
+    save_snapshot(s, "dc1-bigip01", "f5", gws, pols)
+    got = {(x.rule, x.severity) for x in findings.run(s)}
+    s.close()
+    assert ("weak-ciphers", "medium") in got            # +RC4-SHA in the client-ssl profile
+    assert ("non-ssl-allowed", "medium") in got         # allowNonSsl enabled
+    assert ("expiring-certificate", "high") in got       # 10 days out
+
+
+def test_offline_tls_facts_from_conf():
+    _, _, ls = offline()
+    partner = ls["/Partner/vs_partner_api"]
+    assert partner.tls["ciphers"] == "DEFAULT:+RC4-SHA" and partner.tls["allow_non_ssl"] is True
+    assert partner.tls["certs"] == {}  # the cert file itself is not in the conf: expiry needs the live path
+    app1 = ls["/Common/vs_app1_https"]
+    assert app1.tls["ciphers"] == "" and app1.tls["allow_non_ssl"] is False
+
+
+def test_weak_cipher_rule_parsing():
+    assert findings._weak_ciphers("DEFAULT:-SSLv3:-TLSv1:+RC4-SHA:DES-CBC3-SHA:AES128-SHA256") == ["+RC4-SHA", "DES-CBC3-SHA"]
+    assert findings._weak_ciphers("DEFAULT:+RC4") == ["+RC4"]
+    assert findings._weak_ciphers("DEFAULT:ECDHE-RSA-AES128-GCM-SHA256") == []
+    assert findings._weak_ciphers("DEFAULT:TLSv1_2") == []  # TLS 1.2 is fine
+    assert findings._weak_ciphers("DEFAULT:TLSv1_1") == ["TLSv1_1"]
+    assert findings._weak_ciphers(None) == []

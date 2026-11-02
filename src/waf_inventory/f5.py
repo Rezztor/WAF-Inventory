@@ -17,7 +17,9 @@ import re
 import ssl
 import time
 from collections.abc import Callable
+from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import unquote
 
 import httpx
 
@@ -57,6 +59,10 @@ class F5Client:
         r.raise_for_status()
         self.token = r.json()["token"]["token"]
         self.http.headers["X-F5-Auth-Token"] = self.token
+        try:  # the default token lives 20 minutes (F5 K43590271); a long ASM export can outlive it
+            self.http.patch(f"/mgmt/shared/authz/tokens/{self.token}", json={"timeout": 3600}).raise_for_status()
+        except httpx.HTTPError:
+            pass  # older TMOS or restricted accounts keep the default; _req signs in again on 401
 
     def logout(self) -> None:
         if self.token:
@@ -66,10 +72,14 @@ class F5Client:
     def _req(self, method: str, path: str, **kw) -> httpx.Response:
         for attempt in range(4):  # restjavad answers 503 when overloaded
             r = self.http.request(method, path, **kw)
-            if r.status_code != 503:
-                r.raise_for_status()
-                return r
-            time.sleep(2 ** attempt)
+            if r.status_code == 503:
+                time.sleep(2 ** attempt)
+                continue
+            if r.status_code == 401 and self.use_token and self.token:
+                self.login()  # the token expired mid-run: a fresh one, then retry
+                continue
+            r.raise_for_status()
+            return r
         r.raise_for_status()
         return r
 
@@ -140,13 +150,81 @@ def device_version(c: F5Client) -> str:
     return " ".join(ver.get(k, {}).get("description", "") for k in ("Version", "Build")).strip()
 
 
+def failover_state(c: F5Client) -> str | None:
+    """active | standby | forced-offline | ... — the same text `tmsh show sys failover` prints."""
+    try:
+        text = ((c.get("/mgmt/tm/sys/failover").get("apiRawValues") or {}).get("apiAnonymous") or "")
+    except httpx.HTTPError:
+        return None
+    m = re.search(r"Failover\s+(\S+)", text)
+    return m.group(1).lower() if m else None
+
+
+def expiry_iso(exp_date, exp_text) -> str | None:
+    """sys/file/ssl-cert expiration: an epoch in seconds or milliseconds, or text like 'Dec  1 12:00:00 2027 GMT'."""
+    try:
+        if isinstance(exp_date, (int, float)) and exp_date > 10 ** 8:
+            return datetime.fromtimestamp(exp_date / (1000 if exp_date > 10 ** 12 else 1),
+                                           tz=timezone.utc).replace(microsecond=0).isoformat()
+    except (OverflowError, OSError, ValueError):
+        pass
+    for fmt in ("%b %d %H:%M:%S %Y %Z", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(" ".join(str(exp_text).split()), fmt).replace(tzinfo=timezone.utc).isoformat()
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _cipher_group(g) -> str | None:
+    if isinstance(g, dict):
+        link = g.get("link") or ""
+        return unquote(link.rsplit("/", 1)[-1].split("?")[0]) if link else None
+    return g or None
+
+
+def _profile_certs(p: dict) -> list[str]:
+    """The cert files a client-ssl profile serves: certKeyChain on modern TMOS, cert/key on older profiles."""
+    out = [ck.get("cert") for ck in p.get("certKeyChain") or [] if ck.get("cert")]
+    return out or ([p["cert"]] if p.get("cert") else [])
+
+
+def _conf_certs(raw) -> list[str]:
+    """Cert paths from a tmsh `cert-key-chain` block."""
+    out = []
+    for _, children in raw or []:
+        entry = _d(children)
+        if isinstance(entry.get("cert"), str):
+            out.append(_full(entry["cert"]))
+    return out
+
+
+def _listener_tls(profiles: list[dict], certs: dict) -> dict:
+    """Front-end TLS facts for one virtual server, merged from its client-ssl profiles (SNI can carry several)."""
+    tls = {"ciphers": " ".join(dict.fromkeys([p["ciphers"] for p in profiles if isinstance(p.get("ciphers"), str)])),
+           "cipher_group": next((p.get("cipher_group") for p in profiles if p.get("cipher_group")), None),
+           "options": sorted({o for p in profiles for o in p.get("options") or []}),
+           "allow_non_ssl": any(p.get("allow_non_ssl") for p in profiles),
+           "renegotiation": next((p.get("renegotiation") for p in profiles if p.get("renegotiation")), None),
+           "certs": {}}
+    for p in profiles:
+        for cert in p.get("certs") or []:
+            info = certs.get(cert)
+            if cert not in tls["certs"] and info and info.get("expires"):
+                tls["certs"][cert] = info
+    return tls
+
+
 def fetch_rest(c: F5Client, export: bool = True) -> tuple[dict, list[str]]:
     """Read the whole device. Returns (cfg, warnings)."""
     warnings: list[str] = []
     gs = c.get("/mgmt/tm/sys/global-settings")
     cfg = {
-        "device": {"hostname": gs.get("hostname"), "version": device_version(c)},
-        "virtuals": [], "pools": {}, "ltm_policies": {}, "irules": {}, "client_ssl": {}, "http_profiles": [], "asm": {}}
+        "device": {"hostname": gs.get("hostname"), "version": device_version(c), "failover": failover_state(c)},
+        "virtuals": [], "pools": {}, "ltm_policies": {}, "irules": {}, "client_ssl": {}, "http_profiles": [],
+        "asm": {}, "certs": {}}
+    if cfg["device"]["failover"] and cfg["device"]["failover"] != "active":
+        warnings.append(f"the device is {cfg['device']['failover']}, not active: its config may lag the active unit")
     for v in c.items("/mgmt/tm/ltm/virtual", expandSubcollections="true"):
         cfg["virtuals"].append({
             "name": v["fullPath"], "destination": v.get("destination", ""), "pool": v.get("pool"),
@@ -163,8 +241,23 @@ def fetch_rest(c: F5Client, export: bool = True) -> tuple[dict, list[str]]:
                   [_kebab(x) for x in r.get("actionsReference", {}).get("items", [])], r.get("ordinal"))
             for r in p.get("rulesReference", {}).get("items", [])), key=lambda r: r["ordinal"])
     cfg["irules"] = {r["fullPath"]: r.get("apiAnonymous", "") for r in c.items("/mgmt/tm/ltm/rule")}
-    cfg["client_ssl"] = {p["fullPath"]: {"server_name": p.get("serverName")} for p in c.items("/mgmt/tm/ltm/profile/client-ssl")}
+    cfg["client_ssl"] = {p["fullPath"]: {"server_name": p.get("serverName"), "ciphers": p.get("ciphers"),
+                                         "cipher_group": _cipher_group(p.get("cipherGroup")),
+                                         "options": p.get("options") or [],
+                                         "allow_non_ssl": p.get("allowNonSsl") == "enabled",
+                                         "renegotiation": p.get("renegotiation"), "certs": _profile_certs(p)}
+                         for p in c.items("/mgmt/tm/ltm/profile/client-ssl")}
     cfg["http_profiles"] = [p["fullPath"] for p in c.items("/mgmt/tm/ltm/profile/http")]
+    try:  # the certificate files: their expiry is where the front-end TLS story ends
+        cfg["certs"] = {x["fullPath"]: {"expires": expiry_iso(x.get("expirationDate"), x.get("expirationString")),
+                                        "text": x.get("expirationString"), "issuer": x.get("issuer"),
+                                        "key_type": x.get("keyType"), "key_size": x.get("certificateKeySize"),
+                                        "fingerprint": x.get("fingerprint")}
+                        for x in c.items("/mgmt/tm/sys/file/ssl-cert",
+                                         **{"$select": "fullPath,expirationDate,expirationString,issuer,keyType,"
+                                                      "certificateKeySize,fingerprint"})}
+    except httpx.HTTPError:
+        pass
 
     provisioned = {p["name"]: p.get("level") for p in c.items("/mgmt/tm/sys/provision")}
     if provisioned.get("asm", "none") == "none":
@@ -292,6 +385,11 @@ def fetch_ssh(run: Callable[[str], tuple[int, str]]) -> tuple[dict, list[str]]:
         texts.append(out)
     cfg = from_conf("\n".join(texts), "bigip", [])
     cfg["device"]["version"] = version
+    status, fo = run(f'{prefix}"show sys failover"' if prefix else "show sys failover")
+    if status == 0 and (m := re.search(r"Failover\s+(\S+)", fo)):
+        cfg["device"]["failover"] = m.group(1).lower()
+        if cfg["device"]["failover"] != "active":
+            warnings.append(f"the device is {cfg['device']['failover']}, not active: its config may lag the active unit")
     return cfg, warnings
 
 
@@ -311,8 +409,16 @@ def from_conf(text: str, fallback_name: str, exports: list[dict]) -> dict:
     cfg = {
         "device": {"hostname": gs.get("hostname") or fallback_name, "version": parsed["version"]},
         "virtuals": [], "pools": {}, "ltm_policies": {}, "irules": parsed["irules"], "asm": {},
-        "client_ssl": {n: {"server_name": d.get("server-name")} for n, d in o.get("ltm profile client-ssl", {}).items()},
+        "client_ssl": {n: {"server_name": d.get("server-name"),
+                           "ciphers": d.get("ciphers") if isinstance(d.get("ciphers"), str) else None,
+                           "cipher_group": d.get("cipher-group") if isinstance(d.get("cipher-group"), str) else None,
+                           "options": sorted(_d(d.get("options"))),
+                           "allow_non_ssl": d.get("allow-nonssl") in (True, "enabled"),
+                           "renegotiation": d.get("renegotiation") if isinstance(d.get("renegotiation"), str) else None,
+                           "certs": _conf_certs(d.get("cert-key-chain"))}
+                      for n, d in o.get("ltm profile client-ssl", {}).items()},
         "http_profiles": list(o.get("ltm profile http", {})),
+        "certs": {},  # cert expiry needs the live device: the binary file is not in the conf
     }
     for name, d in o.get("ltm virtual", {}).items():
         cfg["virtuals"].append({"name": name, "destination": d.get("destination", ""),
@@ -422,6 +528,7 @@ def build(cfg: dict) -> tuple[list[Gateway], list[WafPolicy]]:
             attached = [p for n, p in pols.items() if vs["name"] in cfg["asm"][n].get("virtual_servers", [])]
             default = attached[0] if len(attached) == 1 else None
         lst.policy = default
+        lst.tls = _listener_tls([cfg["client_ssl"][x] for x in ssl_profs], cfg.get("certs") or {}) if ssl_profs else None
         for route, explicit, pol in ruled:
             route.policy = pol if explicit else default
             lst.routes.append(route)

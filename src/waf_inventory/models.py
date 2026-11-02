@@ -73,6 +73,7 @@ class Listener(Base):
     waf_capable: Mapped[bool] = mapped_column(default=True)  # False for L4 listeners / non-HTTP virtual servers
     policy_id: Mapped[int | None] = mapped_column(ForeignKey("waf_policy.id"))
     native_id: Mapped[str | None]
+    tls: Mapped[dict | None] = mapped_column(JSON)  # front-end TLS facts (F5 client-ssl profiles)
     gateway: Mapped[Gateway] = relationship(back_populates="listeners")
     policy: Mapped[WafPolicy | None] = relationship()
     routes: Mapped[list[Route]] = relationship(back_populates="listener", cascade="all, delete-orphan")
@@ -259,6 +260,12 @@ def connect(url: str) -> Session:
         with engine.connect() as c:
             c.exec_driver_sql("PRAGMA journal_mode=WAL")  # the job thread writes while pages read
     Base.metadata.create_all(engine)
+    if sqlite:  # a database from before a column was added keeps working
+        with engine.connect() as c:
+            cols = {r[1] for r in c.exec_driver_sql("PRAGMA table_info(listener)")}
+            if cols and "tls" not in cols:
+                c.exec_driver_sql("ALTER TABLE listener ADD COLUMN tls JSON")
+                c.commit()
     return Session(engine)
 
 
@@ -293,7 +300,10 @@ def _facts(src: Source) -> dict[str, dict]:
         for lst in g.listeners:
             at = f"{g.name} / {lst.name}"
             out[f"listener|{at}"] = {"protocol": lst.protocol, "port": lst.port, "hostnames": lst.hostnames or [],
-                                     "waf policy": lst.policy.name if lst.policy else None}
+                                     "waf policy": lst.policy.name if lst.policy else None,
+                                     "ciphers": (lst.tls or {}).get("ciphers"),
+                                     "certs": sorted(f"{k.rsplit('/', 1)[-1]} -> {v.get('expires')}"
+                                                     for k, v in ((lst.tls or {}).get("certs") or {}).items())}
             for r in lst.routes:
                 out[f"route|{at} / {r.name}"] = {"hosts": r.hosts or [], "paths": r.paths or [], "backend": r.backend,
                                                  "waf policy": r.policy.name if r.policy else None}

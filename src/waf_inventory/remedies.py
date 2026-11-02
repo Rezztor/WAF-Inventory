@@ -85,6 +85,18 @@ CHECKS: dict[str, tuple[str, str, str, dict[str, str]]] = {
                     "TCP and TLS listeners pass traffic without any HTTP inspection.",
                     {"azure": "If the service speaks HTTP, publish it on an HTTP or HTTPS listener instead. Otherwise limit "
                               "who can reach it with a network security group."}),
+    "expiring-certificate": ("high", "Renew expiring certificates",
+                             "When the certificate expires, every browser and API client refuses the connection.",
+                             {"f5": "Replace the certificate on the client-ssl profile: System › Certificate Management › "
+                                    "SSL Certificate List › Import, then select it in the profile's cert-key-chain."}),
+    "weak-ciphers": ("medium", "Remove weak cipher rules",
+                     "RC4, DES/3DES and SSLv3/TLS 1.0-1.1 rules are broken or downgradeable, and scanners report them.",
+                     {"f5": "Remove the weak rules from the client-ssl profile's cipher string, or use a cipher group "
+                            "with only TLS 1.2/1.3 suites, then check older clients for breakage."}),
+    "non-ssl-allowed": ("medium", "Stop clear-text on HTTPS virtual servers",
+                        "allow-non-ssl passes plain HTTP through a port clients assume is TLS-protected.",
+                        {"f5": "Turn off Allow Non-SSL in the client-ssl profile; serve plain HTTP on its own virtual "
+                               "server if it is really needed."}),
     "backend-tls-unverified": ("medium", "Verify TLS to the backend",
                                "Traffic between the WAF and the server can be read or changed on the way.",
                                {"baffinbay": "Connect to the backend over TLS and verify its certificate (system or own CA)."}),

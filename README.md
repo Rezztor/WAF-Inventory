@@ -10,7 +10,7 @@ A **read-only** tool for WAF products. It finds every web app and API published 
   - CSV, JSON and Excel exports
   - a self-contained HTML report
   - an OpenAPI 3.1 spec per host
-  - posture findings: no WAF, detection-only mode, outdated rule sets, disabled rules, wildcard URLs, shadow/dormant APIs and more
+  - posture findings: no WAF, detection-only mode, outdated rule sets, disabled rules, wildcard URLs, shadow/dormant APIs, expiring certificates, weak cipher rules and more
   - a **fix plan**: a posture score, and the findings grouped into issues ranked by how much fixing each one raises it, with why it matters and how to fix it on each vendor
   - **change history**: every collection is compared with the previous one, so you see which listeners, routes and policies were added, removed or changed, with changes that weakened protection (blocking turned off, a WAF policy taken away) flagged, and the score's trend
   - **search** for any host, policy, API path or issue from every page, and a protected / partly protected / at-risk verdict at the top of each application
@@ -87,7 +87,7 @@ waf-inv serve
 |---|---|---|
 | `azure` | ARM REST: all App Gateways, AppGW WAF policies, Front Door Std/Premium profiles (endpoints, custom domains, routes, origin groups, security policies) and Front Door WAF policies, in every listed (or visible) subscription. With `log_workspaces`, also the App Gateway and Front Door access logs, aggregated in KQL. | `DefaultAzureCredential` (managed identity, service principal env vars or `az login`) with **Reader** on the subscriptions and **Log Analytics Reader** on the workspaces |
 | `azure_bundle` | The same data from a JSON file (`waf-inv collect --save-raw DIR` writes one from a live run) | none |
-| `f5_rest` | iControl REST: virtual servers, pools, LTM policies (first-match by ordinal), iRules, client-SSL SNI, ASM policies with a **declarative JSON export** (1 MB chunks). If the account may not export, it falls back to REST subcollections. | BIG-IP **Auditor** account; HTTPS to the management address; `ca_cert` pins the device certificate |
+| `f5_rest` | iControl REST: virtual servers, pools, LTM policies (first-match by ordinal), iRules, client-SSL SNI with ciphers/options and certificate expiry (`sys/file/ssl-cert`), the failover state, ASM policies with a **declarative JSON export** (1 MB chunks). If the account may not export, it falls back to REST subcollections. The sign-in token is extended to an hour and re-issued automatically if it expires mid-run. | BIG-IP **Auditor** account; HTTPS to the management address; `ca_cert` pins the device certificate |
 | `f5_offline` | A folder with `bigip.conf` (or `tmsh list … recursive` output) and ASM policy JSON exports | none |
 | `baffinbay` | Traffic Management API: every HTTP proxy, L4 proxy and routed DSR with its hostnames, backends, traffic rules, WAF mode, paranoia level, CRS version, exclusions, staged WAF, HTTP compliance, rate limits, geo and IP rules and bot protection; the CRS rule catalogue; and the Event Insight API's WAF events. Collected by the console only. | A Threat Protection service account with read access |
 | `baffinbay_bundle` | The same data from a JSON file in the shape of `examples/baffinbay/bundle.json` | none |

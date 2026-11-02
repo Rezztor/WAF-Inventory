@@ -4,6 +4,7 @@ from __future__ import annotations
 import ipaddress
 import re
 from collections.abc import Iterable
+from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
 from sqlalchemy.orm import Session
@@ -33,6 +34,7 @@ def run(session: Session, specs: Iterable[dict] = ()) -> list[Finding]:
     for lst in session.query(Listener):
         subj = f"{lst.gateway.name} / {lst.name}" + (f" ({', '.join(lst.hostnames)})" if lst.hostnames else "")
         used |= {lst.policy_id, *(r.policy_id for r in lst.routes)} - {None}
+        _tls_findings(add, subj, lst.tls)
         if not lst.waf_capable:
             if lst.gateway.kind == "appgw":
                 add("l4-listener", "medium", "Layer-4 listener is not inspected by the WAF", subj, lst.protocol)
@@ -97,6 +99,50 @@ def run(session: Session, specs: Iterable[dict] = ()) -> list[Finding]:
     session.commit()
     remedies.remember_score(session)
     return out
+
+
+WEAK_CIPHER = ("sslv2", "sslv3", "tlsv1_0", "tlsv1_1", "tlsv1", "rc4", "3des", "des", "md5", "export", "null", "anon")
+
+
+def _weak_ciphers(ciphers: str | None) -> list[str]:
+    """Cipher rules that explicitly allow SSLv3/TLS 1.0-1.1, RC4, DES/3DES, MD5, EXPORT, NULL or ANON."""
+    weak = []
+    for rule in (ciphers or "").replace(",", ":").split(":"):
+        if not rule:
+            continue
+        body, sign = (rule[1:], rule[0]) if rule[0] in ("+", "-") else (rule, "+")
+        if sign == "+" and next((w for w in WEAK_CIPHER if re.search(rf"(?i)(^|[^a-z0-9_]){w}(?![a-z0-9_])", body)), None):
+            weak.append(rule)
+    return weak
+
+
+def _days_left(iso: str) -> int | None:
+    try:
+        return (datetime.fromisoformat(iso).replace(tzinfo=timezone.utc) - datetime.now(timezone.utc)).days
+    except (TypeError, ValueError):
+        return None
+
+
+def _tls_findings(add, subj: str, tls: dict | None) -> None:
+    """Front-end TLS facts of one listener: ciphers, clear-text allowance, certificate expiry."""
+    if not tls:
+        return
+    if tls.get("allow_non_ssl"):
+        add("non-ssl-allowed", "medium", "Non-SSL connections allowed on an HTTPS virtual server", subj,
+            "an SSL profile with allow-non-ssl passes clear-text through")
+    if weak := _weak_ciphers(tls.get("ciphers")):
+        add("weak-ciphers", "medium", "Weak cipher rules in the client-ssl profile", subj, ", ".join(weak[:6]))
+    for name, info in sorted((tls.get("certs") or {}).items()):
+        days = _days_left(info.get("expires") or "")
+        if days is None:
+            continue
+        short, text = name.rsplit("/", 1)[-1], info.get("text") or info.get("expires")
+        if days < 0:
+            add("expiring-certificate", "high", "Certificate has expired", subj, f"{short} expired {-days} day(s) ago ({text})")
+        elif days <= 30:
+            add("expiring-certificate", "high", "Certificate expires within 30 days", subj, f"{short} in {days} day(s) ({text})")
+        elif days <= 90:
+            add("expiring-certificate", "medium", "Certificate expires within 90 days", subj, f"{short} in {days} day(s) ({text})")
 
 
 def _baffinbay(add, st: dict, subj: str) -> None:
