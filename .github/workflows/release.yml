@@ -12,8 +12,7 @@ env:
 
 jobs:
   test:
-    # Rezztor's own runner on the CI VM (GitHub-hosted runners are not used); the image job needs its Docker.
-    runs-on: [self-hosted, linux, ci-vm]
+    runs-on: ubuntu-latest
     container: python:3.13-slim
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -24,15 +23,13 @@ jobs:
 
   image:
     needs: test
-    runs-on: [self-hosted, linux, ci-vm]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
       attestations: write
       id-token: write
     steps:
-      # Container jobs on this runner leave root-owned files in the shared workspace, which checkout here cannot delete.
-      - run: docker run --rm -v "$GITHUB_WORKSPACE:/w" python:3.13-slim find /w -mindepth 1 -delete
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false

@@ -1,10 +1,10 @@
 {% extends "base.html" %}{% from "_macros.html" import grid %}
 {% block title %}{{ title }} · WAF Inventory{% endblock %}
+{% block heading %}{{ title }} <span class="muted" style="font-weight:500">({{ rows | length }})</span>{% endblock %}
 {% block body %}
-<h1>{{ title }} <span class="muted">({{ rows | length }})</span></h1>
-<form class="f" method="get">
-  {% for c in filter_cols %}<label>{{ c | replace("_", " ") }}<input name="{{ c }}" value="{{ filters.get(c, '') }}"></label>{% endfor %}
-  <button type="submit">Filter</button> <a href="/t/{{ name }}">clear</a>
+<form class="f card pad" method="get" style="display:flex">
+  {% for c in filter_cols %}<label>{{ c | replace("_", " ") | capitalize }}<input name="{{ c }}" value="{{ filters.get(c, '') }}"></label>{% endfor %}
+  <button type="submit" class="primary">Filter</button> <a class="btn" href="/t/{{ name }}">Clear</a>
 </form>
 <div class="ex">Export this view:
   {% for fmt in ("csv", "json", "xlsx") %}<a href="/export/{{ name }}.{{ fmt }}{{ '?' ~ query if query }}">{{ fmt | upper }}</a>{% endfor %}

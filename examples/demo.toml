@@ -25,3 +25,8 @@ path = "f5"
 name = "access-logs (sample)"
 type = "logs"                  # JSONL/CSV access-log rows (e.g. exported from Log Analytics or a SIEM)
 path = "logs/*.jsonl"
+
+[[sources]]
+name = "baffinbay-contoso (sample)"
+type = "baffinbay_bundle"      # offline copy of what a Baffin Bay connection reads: proxies, WAF settings and WAF events
+path = "baffinbay/bundle.json"

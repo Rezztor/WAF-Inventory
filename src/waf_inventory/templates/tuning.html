@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% set tone = {"false positive": "ok", "unsure": "warn", "attack": "crit"} %}
+{% block title %}Tuning · WAF Inventory{% endblock %}
+{% block heading %}False-positive tuning{% endblock %}
+{% block sub %}<p class="hint" style="margin:4px 0 0;max-width:80ch">WAF events grouped by proxy, rule and path, scored from counted evidence. Approve a proposal to include it in the change files below; nothing is applied from here. Test every change in the Staged WAF first.</p>{% endblock %}
+{% block body %}
+<form class="f card pad" method="get" style="display:flex">
+<label>Support ID<input name="support_id" value="{{ support_id }}" placeholder="From the user's block page" class="mono"></label>
+<button type="submit" class="primary">Find</button>{% if support_id %} <a class="btn" href="/tuning">Clear</a>{% endif %}
+</form>
+{% if support_id %}{% if hit %}
+<div class="note"><b>Found: {{ hit.action | lower }} {{ hit.time[:16] | replace("T", " ") }} UTC</b>
+<span><code>{{ hit.method }} {{ hit.host }}{{ hit.path }}</code> from {{ hit.source_ip }} ({{ hit.country }}), {{ hit.instance }} WAF, status {{ hit.status }}.
+Rules: {% for r in hit.rules %}{{ r.id }} {{ r.name }}{{ ", " if not loop.last }}{% endfor %}.</span>
+<span>Its group{{ "s are" if rows | length > 1 else " is" }} below.</span></div>
+{% else %}<div class="alert"><b>No stored event has that Support ID</b><span>Events are kept for 35 days and read at each collection. Run the Baffin Bay connection now, or check the ID.</span></div>{% endif %}
+{% else %}
+<nav class="tabs" aria-label="Verdict">{% for key, label in (("", "All"), ("false positive", "Likely false positives"), ("unsure", "Unsure"), ("attack", "Attacks")) %}
+<a href="/tuning{{ '?verdict=' ~ key | urlencode if key }}" class="{{ 'on' if verdict == key }}" {{ 'aria-current=page' if verdict == key }}>{{ label }} ({{ counts[key] }})</a>{% endfor %}</nav>
+{% endif %}
+<div class="ex">Export this list:
+{% for fmt in ("csv", "json", "xlsx") %}<a href="/export/tuning.{{ fmt }}{{ '?verdict=' ~ verdict | urlencode if verdict }}">{{ fmt | upper }}</a>{% endfor %}
+· Approved changes ({{ approved }}): <a href="/export/tuning-approved.json">API request bodies</a><a href="/export/tuning-approved.tf">Terraform</a></div>
+{% for g in rows %}
+<section class="card pad" id="g{{ loop.index }}" style="gap:10px">
+<div class="row"><span class="b {{ tone[g.verdict] }}">{{ g.verdict }}</span><b>{{ g.rule }} {{ g.rule_name }}</b><span class="hint">score {{ g.score }} of 100</span>
+{% if g.decision %}<span class="pill {{ 'ok' if g.decision == 'approved' else 'neu' }}">{{ g.decision }}{{ " by " ~ g.decided_by if g.decided_by }}</span>{% endif %}</div>
+<div><code>{{ g.method }} {{ g.path }}</code> <span class="muted">on {{ g.proxy }} ({{ g.host }}), WAF mode</span> <span class="b {{ g.mode }}">{{ g.mode }}</span></div>
+<ul style="margin:0;padding-left:18px">{% for x in g.evidence %}<li>{{ x }}</li>{% endfor %}{% for x in g.attack_signs %}<li><b>Attack sign:</b> {{ x }}</li>{% endfor %}
+<li class="hint">{{ g.first[:10] }} to {{ g.last[:10] }}</li></ul>
+{% if g.matched %}<div>Matched data: {% for m in g.matched %}<code>{{ m }}</code>{{ " " }}{% endfor %}</div>{% endif %}
+{% if g.proposal %}<div class="box" style="gap:8px"><span><b>Proposal:</b> exclude rule {{ g.proposal.rule }} on path <code>{{ g.proposal.match }}</code>. Add it to the Staged WAF first and watch for 24 to 48 hours, then to the WAF.</span>
+<form class="actions" method="post" action="/tuning/decide"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="key" value="{{ g.key }}">
+<input type="hidden" name="back" value="{{ back }}#g{{ loop.index }}">
+<button class="primary" name="decision" value="approved">Approve</button><button name="decision" value="rejected">Reject</button>
+{% if g.decision %}<button name="decision" value="">Undo</button>{% endif %}</form></div>
+{% elif g.note %}<p class="hint" style="margin:0">{{ g.note }}</p>{% endif %}
+</section>
+{% else %}<p class="muted">Nothing here yet. WAF events arrive with each Baffin Bay collection.</p>{% endfor %}
+{% endblock %}
