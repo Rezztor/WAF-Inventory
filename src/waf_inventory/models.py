@@ -167,6 +167,35 @@ class Finding(Base):
     detail: Mapped[str]
 
 
+class FindingState(Base):
+    """What is remembered about a finding between runs: when it first appeared, an accepted risk, when it went away.
+
+    Findings are recomputed on every run, so this is keyed by rule + subject, not by Finding.id. Two findings with the
+    same rule and subject (two expiring certificates on one listener) share a state.
+    """
+    __tablename__ = "finding_state"
+    key: Mapped[str] = mapped_column(primary_key=True)
+    rule: Mapped[str]
+    severity: Mapped[str]
+    title: Mapped[str]
+    subject: Mapped[str]
+    status: Mapped[str] = mapped_column(default="open")  # open | accepted | resolved
+    first_seen: Mapped[datetime]
+    resolved: Mapped[datetime | None]  # the run that no longer found it
+    reason: Mapped[str | None]  # why the risk was accepted
+    user: Mapped[str | None]
+    decided: Mapped[datetime | None]
+    expires: Mapped[datetime | None]  # an accepted risk comes back as open after this
+
+    @property
+    def accepted(self) -> bool:
+        return self.status == "accepted" and (self.expires is None or self.expires > utcnow())
+
+
+def finding_key(rule: str, subject: str) -> str:
+    return f"{rule}|{subject}"
+
+
 class User(Base):
     __tablename__ = "user"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -336,3 +365,7 @@ def diff(before: dict[str, dict], after: dict[str, dict]) -> list[dict]:
 
 def now() -> datetime:
     return datetime.now(timezone.utc).replace(microsecond=0)
+
+
+def utcnow() -> datetime:
+    return now().replace(tzinfo=None)  # SQLite hands datetimes back naive

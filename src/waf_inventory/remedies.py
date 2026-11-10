@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
-from .models import Finding, Gateway, WafPolicy, get_setting, now, put_setting
+from .models import Finding, FindingState, Gateway, WafPolicy, finding_key, get_setting, now, put_setting, utcnow
 from .report import Inventory
 
 WEIGHT = {"high": 10, "medium": 4, "low": 1}
@@ -180,14 +180,26 @@ def plan(session: Session) -> dict:
     vendors = {v for (v,) in session.query(Gateway.vendor).distinct()} | {v for (v,) in session.query(WafPolicy.vendor).distinct()}
     checks = {r: c for r, c in CHECKS.items() if "any" in c[3] or vendors & c[3].keys()}
     total = sum(WEIGHT[c[0]] for c in checks.values()) or 1
+    t = utcnow()
+    states = {st.key: st for st in session.query(FindingState)}
     by: dict[str, list[Finding]] = defaultdict(list)
+    accepted: dict[str, FindingState] = {}
     for f in session.query(Finding):
-        by[f.rule].append(f)
+        st = states.get(finding_key(f.rule, f.subject))
+        if st and st.accepted:  # an accepted risk is out of the plan and does not fail its check
+            accepted[st.key] = st
+        else:
+            by[f.rule].append(f)
     locate = _locate(session)
+
+    def age(f: Finding) -> int | None:
+        st = states.get(finding_key(f.rule, f.subject))
+        return (t - st.first_seen).days if st else None
     issues = []
     for rule, fs in by.items():
         sev, action, why, fixes = CHECKS.get(rule, (fs[0].severity, fs[0].title, "", {}))
-        items = [{"subject": f.subject, "detail": f.detail, "title": f.title, "vendor": v, "link": link}
+        items = [{"subject": f.subject, "detail": f.detail, "title": f.title, "vendor": v, "link": link,
+                  "key": finding_key(f.rule, f.subject), "age": age(f)}
                  for f in sorted(fs, key=lambda f: f.subject) for v, link in [locate(f.subject)]]
         seen = {i["vendor"] for i in items} - {None}
         shown = [(VENDOR[k], text) for k, text in fixes.items() if k == "any" or k in seen] or [(VENDOR[k], t) for k, t in fixes.items()]
@@ -195,8 +207,15 @@ def plan(session: Session) -> dict:
                        "gain": round(100 * WEIGHT[sev] / total) if rule in checks else 0})
     issues.sort(key=lambda i: (-WEIGHT.get(i["severity"], 0), -len(i["items"]), i["action"]))
     lost = sum(WEIGHT[checks[r][0]] for r in by if r in checks)
+    order = {"high": 0, "medium": 1, "low": 2}
     return {"score": round(100 * (total - lost) / total), "checks": len(checks), "passed": len(set(checks) - set(by)),
-            "issues": issues}
+            "issues": issues,
+            "accepted": [{"key": st.key, "severity": st.severity, "title": st.title, "subject": st.subject, "reason": st.reason,
+                          "user": st.user, "expires": st.expires, "link": locate(st.subject)[1]}
+                         for st in sorted(accepted.values(), key=lambda st: (order.get(st.severity, 9), st.subject))],
+            "resolved": [{"severity": st.severity, "title": st.title, "subject": st.subject, "resolved": st.resolved}
+                         for st in sorted(states.values(), key=lambda st: st.resolved or t, reverse=True)
+                         if st.status == "resolved" and st.resolved >= t - timedelta(days=30)]}
 
 
 def remember_score(session: Session) -> None:

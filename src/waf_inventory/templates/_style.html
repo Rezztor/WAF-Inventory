@@ -195,6 +195,9 @@ label.check{display:flex!important;font-weight:400!important;color:var(--ink)!im
 .fix{display:grid;grid-template-columns:110px 1fr;gap:6px 14px} .fix dt{font-weight:600;color:var(--ink-2)} .fix dd{margin:0}
 .affected{margin:0;padding:0;list-style:none;display:grid;gap:4px;max-height:280px;overflow:auto} .affected li{display:flex;flex-wrap:wrap;gap:2px 10px}
 .affected .mono{overflow-wrap:anywhere}
+.accept>summary{cursor:pointer;color:var(--accent);font-weight:600;list-style:none} .accept>summary::-webkit-details-marker{display:none}
+.accept[open]{flex:1 1 100%;padding:8px 0 10px} .accept[open]>summary{margin-bottom:8px}
+.b.open{background:var(--warn-wash);color:var(--warn)} .b.accepted{background:var(--surface-alt);color:var(--ink-2);box-shadow:inset 0 0 0 1px var(--line)}
 @media (max-width:700px){.fix{grid-template-columns:1fr}.fix dd{margin-bottom:6px}}
 @media (max-width:700px){.shell{align-content:flex-start}.rail{min-width:0;border-right:0;border-bottom:1px solid var(--line)}.brand{padding:12px 16px 4px}.rail nav{flex:none;display:flex;overflow-x:auto;padding:4px 10px 8px}.rail nav a{flex:none}.grp,.status{display:none}.content{padding:16px}.top{padding:10px 16px}.who{border-left:0;padding-left:0}.find{order:5;flex:1 1 100%}.find input{width:100%}table{min-width:640px}}
 </style>

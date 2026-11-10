@@ -12,6 +12,7 @@ A **read-only** tool for WAF products. It finds every web app and API published 
   - an OpenAPI 3.1 spec per host
   - posture findings: no WAF, detection-only mode, outdated rule sets, disabled rules, wildcard URLs, shadow/dormant APIs, expiring certificates, weak cipher rules and more
   - a **fix plan**: a posture score, and the findings grouped into issues ranked by how much fixing each one raises it, with why it matters and how to fix it on each vendor
+  - a **findings lifecycle**: each finding keeps the date it first appeared across collections; a risk can be accepted with a reason for 30 to 365 days, which takes it out of the fix plan and the score until the review date and is written to the audit log; findings that are no longer found are listed as resolved for 30 days
   - **change history**: every collection is compared with the previous one, so you see which listeners, routes and policies were added, removed or changed, with changes that weakened protection (blocking turned off, a WAF policy taken away) flagged, and the score's trend
   - **search** for any host, policy, API path or issue from every page, and a protected / partly protected / at-risk verdict at the top of each application
 

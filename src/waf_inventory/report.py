@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from . import tuning as _tuning_mod
 from .discovery import openapi
-from .models import Change, Endpoint, Finding, Gateway, Listener, Source, WafPolicy, now
+from .models import Change, Endpoint, Finding, FindingState, Gateway, Listener, Source, WafPolicy, finding_key, now, utcnow
 
 TABLES = ("applications", "routes", "policies", "policy_settings", "endpoints", "findings", "tuning", "changes", "sources")
 env = Environment(loader=PackageLoader("waf_inventory"), autoescape=select_autoescape())
@@ -185,8 +185,12 @@ def _endpoints(s: Session) -> list[dict]:
 
 def _findings(s: Session) -> list[dict]:
     order = {"high": 0, "medium": 1, "low": 2}
-    rows = [{"severity": f.severity, "rule": f.rule, "title": f.title, "subject": f.subject, "detail": f.detail}
-            for f in s.query(Finding)]
+    t, states = utcnow(), {st.key: st for st in s.query(FindingState)}
+    rows = [{"severity": f.severity, "rule": f.rule, "title": f.title, "subject": f.subject, "detail": f.detail,
+             "status": "accepted" if st and st.accepted else "open",
+             "first_seen": st.first_seen.date().isoformat() if st else "", "age_days": (t - st.first_seen).days if st else "",
+             "accepted_reason": st.reason if st and st.accepted else ""}
+            for f in s.query(Finding) for st in [states.get(finding_key(f.rule, f.subject))]]
     return sorted(rows, key=lambda r: (order.get(r["severity"], 9), r["rule"], r["subject"]))
 
 
@@ -213,7 +217,7 @@ def _tuning(s: Session) -> list[dict]:
 def summary(s: Session) -> dict:
     apps = table(s, "applications")
     web = [a for a in apps if a["waf_capable"]]
-    findings = table(s, "findings")
+    findings = table(s, "findings", status="open")
     return {
         "applications": len({a["application"] for a in apps}),
         "vendors": sorted({v for (v,) in s.query(Gateway.vendor).distinct()}),

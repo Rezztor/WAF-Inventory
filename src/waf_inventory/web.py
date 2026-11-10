@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from . import auth, f5, findings, jobs, remedies, report, sources, tls, tuning, vault
-from .models import (AuditLog, Endpoint, Finding, Job, Listener, Source, SourceConfig, TuningDecision, WafPolicy, connect, get_setting,
+from .models import (AuditLog, Endpoint, FindingState, Job, Listener, Source, SourceConfig, TuningDecision, WafPolicy, connect, get_setting,
                      put_setting)
 
 PAGES = {  # table -> (title, filter columns)
@@ -28,12 +28,13 @@ PAGES = {  # table -> (title, filter columns)
     "policies": ("WAF policies", ["policy", "vendor", "mode"]),
     "policy_settings": ("Policy settings", ["policy", "setting", "value"]),
     "endpoints": ("API endpoints", ["host", "method", "template", "kind", "mode"]),
-    "findings": ("Findings", ["severity", "rule", "subject"]),
+    "findings": ("Findings", ["severity", "rule", "subject", "status"]),
     "tuning": ("Tuning", ["verdict", "proxy", "rule", "path"]),
     "changes": ("Changes", ["source", "what", "subject", "weakened"]),
     "sources": ("Sources", ["source", "status"]),
 }
 PUBLIC = {"/login", "/healthz"}
+ACCEPT_DAYS = ("30", "90", "180", "365")  # how long a risk can be accepted before it is reviewed again
 FONTS = Path(__file__).parent / "static" / "fonts"
 VERSION = metadata.version("waf-inventory")
 HEADERS = {
@@ -90,7 +91,7 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
         if request.state.user:  # the side menu's findings count and collector line
             with session() as s:
                 nxt = min((x.settings["next_run"] for x in s.query(SourceConfig) if x.settings.get("next_run")), default=None)
-                nav = {"high": s.query(Finding).filter_by(severity="high").count(), "next": nxt, "version": VERSION,
+                nav = {"high": len(report.table(s, "findings", severity="high", status="open")), "next": nxt, "version": VERSION,
                        "running": s.query(Job).filter(Job.status == "running").count()}
         return HTMLResponse(env.get_template(template).render(pages=PAGES, user=request.state.user, csrf=request.state.csrf, nav=nav,
                                                               **ctx), status_code=status_code)
@@ -718,7 +719,28 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
     @app.get("/findings", response_class=HTMLResponse)
     def fix_plan(request: Request):
         with session() as s:
-            return page(request, "fix.html", active="findings", plan=remedies.plan(s), trend=remedies.score_history(s))
+            return page(request, "fix.html", active="findings", plan=remedies.plan(s), trend=remedies.score_history(s), accept_days=ACCEPT_DAYS)
+
+    @app.post("/findings/decide")
+    async def finding_decide(request: Request):
+        """Accept a finding's risk for a while, with a reason, or reopen it."""
+        f = await checked_form(request)
+        reason, days = f.get("reason", "").strip()[:500], f.get("days", "")
+        if f.get("decision") not in ("accepted", "open") or (f["decision"] == "accepted" and (not reason or days not in ACCEPT_DAYS)):
+            raise HTTPException(400, "Give a reason and choose how long to accept the risk")
+        with session() as s:
+            st = s.get(FindingState, f.get("key", ""))
+            if st is None or st.status == "resolved":
+                raise HTTPException(404)
+            if f["decision"] == "accepted":
+                t = auth._now()
+                st.status, st.reason, st.user, st.decided, st.expires = "accepted", reason, request.state.user, t, t + timedelta(days=int(days))
+                audit(s, request, "finding accepted", st.key, reason=reason, days=int(days))
+            else:
+                st.status, st.reason, st.user, st.decided, st.expires = "open", None, None, None, None
+                audit(s, request, "finding reopened", st.key)
+            s.commit()
+        return RedirectResponse("/findings", 303)
 
     @app.get("/changes", response_class=HTMLResponse)
     def changes_page(request: Request, weakened: str = "", source: str = ""):

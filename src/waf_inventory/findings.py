@@ -4,7 +4,7 @@ from __future__ import annotations
 import ipaddress
 import re
 from collections.abc import Iterable
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
 from sqlalchemy.orm import Session
@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from . import remedies, tuning
 from .baffinbay import RISKY_METHODS
 from .discovery import glob_rx, template_rx
-from .models import Endpoint, Finding, Listener, WafPolicy
+from .models import Endpoint, Finding, FindingState, Listener, WafPolicy, finding_key, utcnow
 from .report import Inventory
 
 MIN_RULESET = {"OWASP": (3, 2), "Microsoft_DefaultRuleSet": (2, 1), "DefaultRuleSet": (1, 0), "CRS": (4, 0)}
@@ -96,9 +96,36 @@ def run(session: Session, specs: Iterable[dict] = ()) -> list[Finding]:
     for proxy, n in sorted(todo.items()):
         add("tuning-candidates", "low", "Likely WAF false positives to review", f"baffinbay: {proxy}", f"{n} on the Tuning page")
     session.add_all(out)
+    _track(session, out)
     session.commit()
     remedies.remember_score(session)
     return out
+
+
+KEEP_RESOLVED = timedelta(days=90)
+
+
+def _track(session: Session, out: list[Finding]) -> None:
+    """Carry each finding's state over the recompute: new ones get a first-seen time, missing ones become resolved."""
+    t = utcnow()
+    states = {st.key: st for st in session.query(FindingState)}
+    for f in out:
+        k = finding_key(f.rule, f.subject)
+        st = states.get(k)
+        if st is None:
+            st = states[k] = FindingState(key=k, first_seen=t)
+            session.add(st)
+        elif st.status == "resolved":  # it is back: a new occurrence
+            st.status, st.first_seen, st.resolved = "open", t, None
+        elif st.status == "accepted" and not st.accepted:  # the acceptance ran out
+            st.status = "open"
+        st.rule, st.severity, st.title, st.subject = f.rule, f.severity, f.title, f.subject
+    for k in states.keys() - {finding_key(f.rule, f.subject) for f in out}:
+        st = states[k]
+        if st.status != "resolved":
+            st.status, st.resolved = "resolved", t
+        elif st.resolved < t - KEEP_RESOLVED:
+            session.delete(st)
 
 
 WEAK_CIPHER = ("sslv2", "sslv3", "tlsv1_0", "tlsv1_1", "tlsv1", "rc4", "3des", "des", "md5", "export", "null", "anon")
