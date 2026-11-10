@@ -863,7 +863,7 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
         with session() as s:
             hit, rows = tuning.support_lookup(s, support_id) if support_id.strip() else (None, tuning.groups(s))
             counts = {k: sum(g["verdict"] == k for g in rows) if k else len(rows) for k in ("", "false positive", "unsure", "attack")}
-            approved = sum(g["decision"] == "approved" and g["proposal"] is not None for g in rows)
+            approved = sum(g["decision"] == "approved" and g["proposal"] is not None and g["vendor"] == "baffinbay" for g in rows)
             back = "/tuning" + (f"?{request.url.query}" if request.url.query else "")
             return page(request, "tuning.html", active="tuning", rows=[g for g in rows if not verdict or g["verdict"] == verdict],
                         counts=counts, verdict=verdict, support_id=support_id, hit=hit, approved=approved, back=back)

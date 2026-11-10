@@ -207,7 +207,7 @@ def _sources(s: Session) -> list[dict]:
 
 
 def _tuning(s: Session) -> list[dict]:
-    return [{"verdict": g["verdict"], "score": g["score"], "proxy": g["proxy"], "host": g["host"], "method": g["method"],
+    return [{"verdict": g["verdict"], "score": g["score"], "vendor": g["vendor"], "proxy": g["proxy"], "host": g["host"], "method": g["method"],
              "path": g["path"], "rule": g["rule"], "rule_name": g["rule_name"], "events": g["events"], "sources": g["sources"],
              "days": g["days"], "first": g["first"], "last": g["last"], "evidence": "; ".join(g["evidence"] + g["attack_signs"]),
              "proposal": f"exclude {g['proposal']['rule']} on {g['proposal']['match']}" if g["proposal"] else g["note"],

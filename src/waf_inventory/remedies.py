@@ -127,7 +127,10 @@ CHECKS: dict[str, tuple[str, str, str, dict[str, str]]] = {
                          {"baffinbay": "Turn on matched data in the proxy's Data Settings."}),
     "tuning-candidates": ("low", "Review likely false positives",
                           "Blocked customers and noisy logs hide real attacks.",
-                          {"baffinbay": "Open the Tuning page and approve or reject each proposal."}),
+                          {"azure": "Open the Tuning page and approve or reject each proposal. Add an approved one as a per-rule "
+                                    "exclusion (WAF policy › Managed rules › Exclusions) while the policy is in detection mode, "
+                                    "or watch the WAF logs after the change.",
+                           "baffinbay": "Open the Tuning page and approve or reject each proposal."}),
     "violations-not-blocking": ("low", "Block violations that only alarm",
                                 "These violations are detected but never blocked.",
                                 {"f5": "Set the Block flag for them in Learning and Blocking Settings once they no longer fire on good traffic."}),

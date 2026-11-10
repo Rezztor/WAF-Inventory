@@ -92,9 +92,9 @@ def run(session: Session, specs: Iterable[dict] = ()) -> list[Finding]:
     todo: dict[str, int] = {}
     for g in tuning.groups(session):
         if g["verdict"] == "false positive" and not g["decision"]:
-            todo[g["proxy"]] = todo.get(g["proxy"], 0) + 1
-    for proxy, n in sorted(todo.items()):
-        add("tuning-candidates", "low", "Likely WAF false positives to review", f"baffinbay: {proxy}", f"{n} on the Tuning page")
+            todo[f"{g['vendor']}: {g['proxy']}"] = todo.get(f"{g['vendor']}: {g['proxy']}", 0) + 1
+    for subject, n in sorted(todo.items()):
+        add("tuning-candidates", "low", "Likely WAF false positives to review", subject, f"{n} on the Tuning page")
     session.add_all(out)
     _track(session, out)
     session.commit()

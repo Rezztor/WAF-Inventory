@@ -7,6 +7,7 @@ import getpass
 import glob
 import json
 import os
+import re
 import sys
 import tomllib
 from collections.abc import Callable
@@ -48,7 +49,7 @@ def collect_source(session, cfg: dict, src: dict, save_raw: str | None = None, c
     """Collect one source into the inventory. `credential` / `password` come from the console's vault; without them
     Azure uses DefaultAzureCredential and F5 the environment variable named by password_env."""
     kind, name = src["type"], src["name"]
-    observations = None
+    observations, events = None, None
     if kind in ("azure", "azure_bundle"):
         if kind == "azure":
             if credential is None:
@@ -58,12 +59,18 @@ def collect_source(session, cfg: dict, src: dict, save_raw: str | None = None, c
             bundle = azure.fetch_bundle(arm, src.get("subscriptions", []))
             if src.get("log_workspaces"):
                 observations = list(azure.fetch_observations(arm, src["log_workspaces"], src.get("log_days", 30)))
+                try:  # tuning is an extra: a workspace without firewall logs must not fail the inventory
+                    bundle["waf_events"] = azure.fetch_waf_rows(arm, src["log_workspaces"], min(src.get("log_days", 30), EVENT_DAYS),
+                                                                last_event_time(session, name))
+                except Exception as e:
+                    log(f"warning: WAF events not read ({type(e).__name__}: {e})")
             if save_raw:
                 Path(save_raw).mkdir(parents=True, exist_ok=True)
                 (Path(save_raw) / f"{name}.json").write_text(json.dumps(bundle, indent=1))
         else:
             bundle = json.loads(_path(cfg, src["path"]).read_text())
         gateways, policies = azure.parse_bundle(bundle)
+        events = azure.waf_events(bundle.get("waf_events", []), policies)
     elif kind == "f5_rest":
         password = password or os.environ.get(src.get("password_env", "F5_PASSWORD"))
         if not password:
@@ -92,7 +99,7 @@ def collect_source(session, cfg: dict, src: dict, save_raw: str | None = None, c
         for crs, rules in (bundle.get("core_rule_sets") or {}).items():  # modSecId -> the rule id exclusions name
             put_setting(session, f"crs:{crs}", rules)
         save_snapshot(session, name, kind, gateways, policies)
-        n = store_events(session, name, kind, bundle.get("events", []))
+        n = store_events(session, name, kind, [baffinbay.event_row(e) for e in bundle.get("events", []) if e.get("id")])
         return f"{len(gateways)} proxy(ies), {len(policies)} WAF configuration(s), {n} new WAF event(s)"
     elif kind == "logs":
         gateways, policies = None, None
@@ -108,6 +115,8 @@ def collect_source(session, cfg: dict, src: dict, save_raw: str | None = None, c
     if observations is not None:
         n = store_endpoints(session, name, kind, observations, cfg.get("discovery", {}))
         msg += f", {len(observations)} log row(s) -> {n} endpoint(s)"
+    if events is not None and (events or kind == "azure" and src.get("log_workspaces")):
+        msg += f", {store_events(session, name, kind, events)} new WAF event(s)"
     return msg
 
 
@@ -125,11 +134,12 @@ EVENT_DAYS = 35
 
 
 def store_events(session, name: str, kind: str, events: list[dict]) -> int:
-    """Add events not stored yet and drop those older than EVENT_DAYS before the newest. Returns how many were added."""
+    """Add events (rows in the shape of WafEvent) not stored yet and drop those older than EVENT_DAYS before the newest.
+    Returns how many were added."""
     src = source(session, name, kind)
     session.flush()
-    have = {i for (i,) in session.query(WafEvent.id).filter_by(source_id=src.id)}
-    rows = {e["id"]: baffinbay.event_row(e) for e in events if e.get("id") and e["id"] not in have}
+    have = {i for (i,) in session.query(WafEvent.id)}  # ids are the primary key across sources
+    rows = {e["id"]: e for e in events if e["id"] not in have}
     session.add_all(WafEvent(source_id=src.id, **r) for r in rows.values())
     session.flush()
     if newest := session.query(WafEvent.time).filter_by(source_id=src.id).order_by(WafEvent.time.desc()).limit(1).scalar():
@@ -137,6 +147,13 @@ def store_events(session, name: str, kind: str, events: list[dict]) -> int:
         session.query(WafEvent).filter(WafEvent.source_id == src.id, WafEvent.time < cutoff).delete()
     session.commit()
     return len(rows)
+
+
+def last_event_time(session, name: str) -> str | None:
+    """The time of a source's newest stored event, as the Log Analytics query takes it."""
+    t = session.query(WafEvent.time).join(Source, WafEvent.source_id == Source.id).filter(Source.name == name) \
+        .order_by(WafEvent.time.desc()).limit(1).scalar()
+    return t if t and re.fullmatch(r"[0-9T:.\-]+Z?", t) else None
 
 
 def last_event(session, name: str) -> str | None:

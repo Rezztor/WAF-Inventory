@@ -5,6 +5,8 @@ Parsing works on ARM REST JSON (with a `properties` wrapper) and on `az ... list
 """
 from __future__ import annotations
 
+import json
+import re
 import time
 from collections.abc import Iterable, Iterator
 
@@ -130,6 +132,120 @@ def fetch_observations(arm: Arm, workspaces: Iterable[str], days: int = 30) -> I
                 "status": r.get("Status"), "content_type": r.get("ContentType"), "user_agent": r.get("UserAgent"),
                 "hits": r.get("Hits", 1), "first_seen": r.get("FirstSeen"), "last_seen": r.get("LastSeen"),
             }
+
+
+# WAF (firewall) logs from App Gateway and Front Door Std/Premium, one row per request and matched rule. The firewall
+# logs carry no method, status or user agent, so those are joined from the access logs on the transaction id
+# (App Gateway) or tracking reference (Front Door).
+WAF_KQL = r"""
+let fw = union isfuzzy=true
+ (AGWFirewallLogs
+  | project TimeGenerated, Kind = "appgw", Tid = tostring(column_ifexists("TransactionId", "")), Host = tostring(column_ifexists("Hostname", "")),
+            Uri = tostring(column_ifexists("RequestUri", "")), ClientIp = tostring(column_ifexists("ClientIp", "")),
+            RuleSet = tostring(column_ifexists("RuleSetType", "")), Rule = tostring(column_ifexists("RuleId", "")),
+            Message = tostring(column_ifexists("Message", "")), Action = tostring(column_ifexists("Action", "")),
+            Data = tostring(column_ifexists("DetailedData", "")), Policy = tostring(column_ifexists("PolicyId", ""))),
+ (AzureDiagnostics | where Category == "ApplicationGatewayFirewallLog"
+  | project TimeGenerated, Kind = "appgw", Tid = tostring(column_ifexists("transactionId_g", "")), Host = tostring(column_ifexists("hostname_s", "")),
+            Uri = tostring(column_ifexists("requestUri_s", "")), ClientIp = tostring(column_ifexists("clientIp_s", "")),
+            RuleSet = tostring(column_ifexists("ruleSetType_s", "")), Rule = tostring(column_ifexists("ruleId_s", "")),
+            Message = tostring(column_ifexists("Message", "")), Action = tostring(column_ifexists("action_s", "")),
+            Data = tostring(column_ifexists("details_data_s", "")), Policy = tostring(column_ifexists("policyId_s", ""))),
+ (AzureDiagnostics | where Category == "FrontDoorWebApplicationFirewallLog"
+  | project TimeGenerated, Kind = "afd", Tid = tostring(column_ifexists("trackingReference_s", "")), Host = tostring(column_ifexists("host_s", "")),
+            Uri = tostring(column_ifexists("requestUri_s", "")), ClientIp = tostring(column_ifexists("clientIP_s", "")),
+            RuleSet = "", Rule = tostring(column_ifexists("ruleName_s", "")),
+            Message = tostring(column_ifexists("details_msg_s", "")), Action = tostring(column_ifexists("action_s", "")),
+            Data = tostring(column_ifexists("details_matches_s", "")), Policy = tostring(column_ifexists("policy_s", "")));
+let acc = union isfuzzy=true
+ (AGWAccessLogs
+  | project Tid = tostring(column_ifexists("TransactionId", "")), Method = tostring(column_ifexists("HttpMethod", "")),
+            Status = toint(column_ifexists("HttpStatus", 0)), UserAgent = tostring(column_ifexists("UserAgent", ""))),
+ (AzureDiagnostics | where Category == "ApplicationGatewayAccessLog"
+  | project Tid = tostring(column_ifexists("transactionId_g", "")), Method = tostring(column_ifexists("httpMethod_s", "")),
+            Status = toint(column_ifexists("httpStatus_d", 0)), UserAgent = tostring(column_ifexists("userAgent_s", ""))),
+ (AzureDiagnostics | where Category == "FrontDoorAccessLog"
+  | project Tid = tostring(column_ifexists("trackingReference_s", "")), Method = tostring(column_ifexists("httpMethod_s", "")),
+            Status = toint(column_ifexists("httpStatusCode_s", "0")), UserAgent = tostring(column_ifexists("userAgent_s", "")))
+ | where isnotempty(Tid)
+ | summarize Method = take_any(Method), Status = take_any(Status), UserAgent = take_any(UserAgent) by Tid;
+fw
+| where isnotempty(Tid) __SINCE__
+| join kind=leftouter acc on Tid
+| project TimeGenerated, Kind, Tid, Host, Uri, ClientIp, RuleSet, Rule, Message, Action, Data, Policy, Method, Status, UserAgent
+| top 100000 by TimeGenerated desc
+"""  # shortcut: the newest 100,000 rule matches per workspace and run; collect more often if a workspace has more
+
+
+def fetch_waf_rows(arm: Arm, workspaces: Iterable[str], days: int = 30, since: str | None = None) -> list[dict]:
+    """Firewall log rows as the workspace returns them, from `since` (ISO 8601) when given."""
+    if since and not re.fullmatch(r"[0-9T:.\-]+Z?", since):
+        raise ValueError(f"not a timestamp: {since!r}")
+    kql = WAF_KQL.replace("__SINCE__", f"and TimeGenerated > datetime({since})" if since else "")
+    return [r for ws in workspaces for r in arm.query_logs(ws, kql, days)]
+
+
+SCORING = ("949", "959", "980")  # anomaly-score evaluation rules: they fire on the total, not on the request content
+APPGW_VAR = re.compile(r"found within \[?([A-Z_]+)(?::([^:\s\]]+))?")
+AFD_VAR = {"QueryParamValue": "arg", "PostParamValue": "arg", "CookieValue": "cookie", "HeaderValue": "header", "JsonValue": "json"}
+APPGW_KIND = {"ARGS": "arg", "ARGS_GET": "arg", "ARGS_POST": "arg", "ARGS_NAMES": "arg", "REQUEST_COOKIES": "cookie",
+              "REQUEST_COOKIES_NAMES": "cookie", "REQUEST_HEADERS": "header", "REQUEST_HEADERS_NAMES": "header"}
+
+
+def _matches(kind: str, data: str) -> list[tuple[str | None, str | None, str]]:
+    """(field kind, field name, matched value) for one firewall log row."""
+    if kind == "afd":
+        try:
+            items = json.loads(data or "[]")
+        except ValueError:
+            return []
+        out = []
+        for m in items if isinstance(items, list) else []:
+            var, _, name = str(m.get("matchVariableName", "")).partition(":")
+            out.append((AFD_VAR.get(var), name or None, str(m.get("matchVariableValue", ""))))
+        return out
+    m = APPGW_VAR.search(data or "")
+    value = re.match(r"Matched Data: (.*?) found within", data or "")
+    return [(APPGW_KIND.get(m[1]) if m else None, m[2] if m else None, value[1] if value else "")] if data else []
+
+
+def waf_events(rows: Iterable[dict], policies: Iterable[WafPolicy]) -> list[dict]:
+    """Firewall log rows as events in the shape of WafEvent: one per request, with every managed rule it matched.
+
+    Custom rules, bot rules and the anomaly-score evaluation rules are left out: tuning is about managed-rule false positives.
+    """
+    pols = list(policies)
+    afd = {p.name.lower(): p.native_id for p in pols if "frontdoorwebapplicationfirewallpolicies" in (p.native_id or "")}
+    known = {p.native_id for p in pols}
+    by: dict[str, list[dict]] = {}
+    for r in rows:
+        if r.get("Tid"):
+            by.setdefault(r["Tid"], []).append(r)
+    out = []
+    for tid, rs in by.items():
+        rules, matched = {}, []
+        for r in rs:
+            rid = re.search(r"(\d{6,8})$", r.get("Rule") or "")
+            if not rid or not rid[1].startswith("9") or rid[1].startswith(SCORING):
+                continue
+            hits = _matches(r.get("Kind") or "", r.get("Data") or "")
+            fields = sorted({(k, n) for k, n, _ in hits if k and n})
+            rules[rid[1]] = {"id": rid[1], "name": r.get("Message") or "", "fields": [{"kind": k, "name": n} for k, n in fields]}
+            matched += [v[:200] for _, _, v in hits if v]
+        if not rules:
+            continue
+        first = min(rs, key=lambda r: r.get("TimeGenerated") or "")
+        uri, policy = first.get("Uri") or "/", (first.get("Policy") or "").lower()
+        if "://" in uri:  # Front Door logs the whole URL
+            uri = "/" + uri.split("://", 1)[1].partition("/")[2]
+        blocked = any((r.get("Action") or "").lower() in ("blocked", "block") for r in rs)
+        out.append({"id": f"az:{tid}", "time": (first.get("TimeGenerated") or "")[:19] + "Z", "proxy": afd.get(policy) or (policy if policy in known else None),
+                    "host": (first.get("Host") or "").split(":")[0].lower(), "method": first.get("Method") or None,
+                    "path": uri.split("?")[0] or "/", "status": first.get("Status") or None,
+                    "action": "BLOCKED" if blocked else "LOGGED", "instance": "main", "rules": list(rules.values()),
+                    "matched": sorted(set(matched)), "source_ip": first.get("ClientIp") or None, "country": None,
+                    "user_agent": (first.get("UserAgent") or "")[:300], "support_id": tid.replace("-", "").lower()})
+    return out
 
 
 # ---------------------------------------------------------------- parsing

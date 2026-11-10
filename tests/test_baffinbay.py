@@ -43,9 +43,9 @@ def test_events_are_stored_once_and_aged_out_after_35_days(tmp_path):
     s = connect(str(tmp_path / "t.db"))
     old = json.loads(json.dumps(BUNDLE["events"][0]))
     old["id"], old["attributes"]["timestamp"] = "old-one", "2026-08-01T00:00:00.000Z"
-    store_events(s, "bb", "baffinbay", BUNDLE["events"] + [old])
+    store_events(s, "bb", "baffinbay", [baffinbay.event_row(e) for e in BUNDLE["events"] + [old]])
     assert s.query(WafEvent).count() == len(BUNDLE["events"])  # 2 months before the newest: dropped at once
-    assert store_events(s, "bb", "baffinbay", BUNDLE["events"]) == 0
+    assert store_events(s, "bb", "baffinbay", [baffinbay.event_row(e) for e in BUNDLE["events"]]) == 0
 
 
 def test_findings_for_proxy_settings(session):

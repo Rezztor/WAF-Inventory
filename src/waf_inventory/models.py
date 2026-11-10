@@ -115,7 +115,7 @@ class Endpoint(Base):
 
 
 class WafEvent(Base):
-    """A request a WAF rule matched (Baffin Bay), kept for tuning. Of the headers only Host and User-Agent are kept."""
+    """A request a WAF rule matched (Baffin Bay, Azure WAF), kept for tuning. Of the headers only Host and User-Agent are kept."""
     __tablename__ = "waf_event"
     id: Mapped[str] = mapped_column(primary_key=True)  # the vendor's event id
     source_id: Mapped[int] = mapped_column(ForeignKey("source.id"), index=True)

@@ -1,6 +1,10 @@
 """False-positive tuning: WAF events grouped by proxy, rule and path template, scored from counted evidence, with the
 narrowest exclusion proposed for each likely false positive.
 
+Events come from Baffin Bay (its Event Insight API) and Azure WAF (the firewall logs in Log Analytics). A Baffin Bay
+proposal excludes the rule on a path; an Azure one excludes a request field from the rule, since Azure exclusions
+cannot be limited to a path.
+
 Deterministic on purpose, with no language model: the same events always give the same plan, and no request content an
 attacker writes can argue its way into an exclusion. A person approves every proposal; nothing is applied from here.
 """
@@ -19,6 +23,8 @@ NOISY = ("920", "921", "932", "941", "942")  # CRS families known to misfire on 
 SCANNER = re.compile(r"zgrab|masscan|nmap|nikto|sqlmap|nuclei|gobuster|dirbuster|dirb/|wpscan|feroxbuster|ffuf|httpx|"
                      r"python-requests|go-http-client|libwww|curl/|wget/|scan", re.I)
 MIN_EVENTS = 5
+MAX_FIELDS = 3  # an Azure proposal names at most this many request fields
+FIELD = {"arg": "argument", "cookie": "cookie", "header": "header", "json": "JSON field"}
 LIKELY = 60  # score from which a group is a likely false positive
 
 
@@ -35,7 +41,7 @@ def groups(session: Session) -> list[dict]:
     templates: dict[tuple, list[tuple[re.Pattern, str]]] = defaultdict(list)
     for e in discover({"host": x.host, "method": x.method, "path": x.path} for x in events):
         templates[(e["host"], e["method"])].append((template_rx(e["template"]), e["template"]))
-    policies = {p.native_id: p for p in session.query(WafPolicy).filter_by(vendor="baffinbay")}
+    policies = {p.native_id: p for p in session.query(WafPolicy) if p.native_id}
     decisions = {d.key: d for d in session.query(TuningDecision)}
     agg: dict[tuple, list[WafEvent]] = defaultdict(list)
     for x in events:
@@ -73,7 +79,19 @@ def _score(key: tuple, evs: list[WafEvent], pol: WafPolicy | None, decisions: di
     matched = sorted({m for e in evs for m in e.matched})[:3]
     verdict = "attack" if attack else "unsure" if n < MIN_EVENTS else "false positive" if score >= LIKELY else "unsure"
     proposal, note = None, ""
-    if verdict == "false positive":
+    vendor = pol.vendor if pol else "azure" if evs[0].id.startswith("az:") else "baffinbay"
+    if verdict == "false positive" and vendor == "azure":
+        # Azure exclusions name a request field (an argument, cookie or header) for a rule; they cannot be limited to a path
+        fields = sorted({(f["kind"], f["name"]) for e in evs for r in e.rules if r["id"] == rule for f in r.get("fields", [])})
+        if pol is None:
+            note = "No proposal: the WAF policy these events belong to is not in the inventory."
+        elif not fields or len(fields) > MAX_FIELDS:
+            note = ("No proposal: the logs do not name the request field that matched." if not fields else
+                    f"No proposal: {len(fields)} different request fields matched, too many for one exclusion. Check the matched data.")
+        else:
+            proposal = {"rule": rule, "match": ", ".join(f"{FIELD[k]} {n}" for k, n in fields),
+                        "fields": [{"kind": k, "name": n} for k, n in fields]}
+    elif verdict == "false positive":
         segs = template.strip("/").split("/")
         if not segs[0] or segs[0].startswith("{"):
             note = "No proposal: an exclusion here would cover the whole site. Check the matched data and decide by hand."
@@ -81,7 +99,7 @@ def _score(key: tuple, evs: list[WafEvent], pol: WafPolicy | None, decisions: di
             proposal = {"match": _params_to_wildcards(template), "rule": rule}
     k = f"{proxy_id}|{rule}|{method}|{template}"
     d = decisions.get(k)
-    return {"key": k, "verdict": verdict, "score": score, "proxy": pol.name if pol else proxy_id or "", "proxy_id": proxy_id,
+    return {"key": k, "vendor": vendor, "verdict": verdict, "score": score, "proxy": pol.name if pol else proxy_id or "", "proxy_id": proxy_id,
             "mode": pol.mode if pol else "", "host": ", ".join(sorted({e.host for e in evs})), "method": method, "path": template,
             "rule": rule, "rule_name": next((r["name"] for e in evs for r in e.rules if r["id"] == rule and r.get("name")), ""),
             "events": n, "sources": len(ips), "days": len(days), "first": min(e.time for e in evs), "last": max(e.time for e in evs),
