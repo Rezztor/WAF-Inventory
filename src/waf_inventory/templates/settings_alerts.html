@@ -1,0 +1,39 @@
+{% extends "_settings.html" %}
+{% block title %}Alerts · WAF Inventory{% endblock %}
+{% block settings %}
+<div class="cell" style="gap:4px"><h2 class="big">Alerts</h2>
+<p style="margin:0;color:var(--ink-2);max-width:62ch">A message after a collection when something needs attention. Nothing is sent until a webhook or an email server is set.</p></div>
+{% if results %}<div class="{{ 'alert' if results | selectattr(1) | list else 'note' }}" role="status"><b>Test message</b><ul>{% for channel, error in results %}<li>{{ channel | capitalize }}: {{ error or "sent" }}</li>{% endfor %}</ul></div>{% endif %}
+<form class="stack" method="post" action="/settings/alerts" style="gap:16px"><input type="hidden" name="csrf" value="{{ csrf }}">
+<section class="card pad"><h3 style="font-size:15px">Send an alert when</h3>
+{% for key, label in events.items() %}<label class="check"><input type="checkbox" name="event_{{ key }}" {{ "checked" if key in a.events }}><span><b>{{ label }}</b><br><span class="hint">{{ hints[key] }}</span></span></label>{% endfor %}
+</section>
+
+<section class="card pad"><div class="cell"><h3 style="font-size:15px">Webhook</h3><span class="hint">A JSON POST with a <code>text</code> field, the form chat incoming webhooks read, plus the events as a list.</span></div>
+<label class="lbl">Webhook URL<input class="in" type="password" name="webhook" autocomplete="off" placeholder="{{ 'Saved. Leave blank to keep it' if a.webhook else 'https://…' }}">
+<span class="hint">Stored encrypted and never shown again.</span></label>
+{% if a.webhook %}<label class="check"><input type="checkbox" name="webhook_remove"><span><b>Remove the saved webhook</b></span></label>{% endif %}
+</section>
+
+<section class="card pad"><div class="cell"><h3 style="font-size:15px">Email</h3><span class="hint">Leave the server blank to send no email.</span></div>
+<div class="grid" style="--min:220px">
+<label class="lbl">SMTP server<input class="in" name="smtp_host" value="{{ a.smtp.host or '' }}" placeholder="smtp.corp.example"></label>
+<label class="lbl">Port<input class="in" name="smtp_port" value="{{ a.smtp.port or '' }}" inputmode="numeric" placeholder="587"></label>
+<label class="lbl">Security<select class="in" name="smtp_security">{% for key, label in security.items() %}<option value="{{ key }}" {{ "selected" if (a.smtp.security or "starttls") == key }}>{{ label }}</option>{% endfor %}</select></label>
+</div>
+<div class="grid" style="--min:220px">
+<label class="lbl">Username<input class="in" name="smtp_username" value="{{ a.smtp.username or '' }}" autocomplete="off"><span class="hint">Blank if the server needs no sign-in.</span></label>
+<label class="lbl">Password<input class="in" type="password" name="smtp_password" autocomplete="new-password" placeholder="{{ 'Saved. Leave blank to keep it' if a.smtp_password else '' }}"></label>
+</div>
+<div class="grid" style="--min:220px">
+<label class="lbl">From<input class="in" name="smtp_sender" value="{{ a.smtp.sender or '' }}" placeholder="waf-inventory@corp.example"></label>
+<label class="lbl">To<input class="in" name="smtp_to" value="{{ (a.smtp.to or []) | join(', ') }}" placeholder="secops@corp.example, …"><span class="hint">Several addresses separated by commas.</span></label>
+</div>
+</section>
+
+<section class="card pad"><label class="lbl" style="max-width:480px">Address of this console<input class="in" name="base_url" value="{{ a.base_url }}" placeholder="https://waf.corp.example:8443">
+<span class="hint">Optional. Added to each alert as a link back.</span></label></section>
+
+<div class="actions end"><button name="action" value="test">Save and send a test</button><button class="primary" name="action" value="save">Save changes</button></div>
+</form>
+{% endblock %}

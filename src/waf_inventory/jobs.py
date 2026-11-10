@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
-from . import findings, sources
+from . import alerts, findings, sources
 from .auth import _now
 from .models import Job, SourceConfig, get_setting, now, source
 
@@ -36,6 +36,7 @@ def interrupted(engine: Engine) -> None:
 class Runner:
     def __init__(self, engine: Engine, cfg: dict, echo: bool = False):
         self.engine, self.cfg, self.echo = engine, cfg, echo
+        self.tls_cert = None  # the console's HTTPS certificate, for the expiry alert
         self.q: queue.Queue[int] = queue.Queue()
         self.thread: threading.Thread | None = None
         self.lock = threading.Lock()
@@ -96,7 +97,7 @@ class Runner:
             except Exception as e:  # one failed source must not stop the worker
                 s.rollback()
                 sc = s.query(SourceConfig).filter_by(name=job.source).one_or_none()  # it may have been deleted meanwhile
-                job.status, job.summary = "error", sources.explain(e, sc)
+                job.summary = sources.explain(e, sc)
                 log(f"Failed: {job.summary}")
                 if sc is not None:
                     retry = job.trigger == "schedule" and sources.collection(s)["retry"]
@@ -107,6 +108,8 @@ class Runner:
                     s.commit()
                     if retry:
                         log(f"Will try again at {_now() + sources.RETRY:%H:%M} UTC")
+                job.status = "error"  # set last, so the job page keeps refreshing until the alert line is written
+            alerts.after_run(s, job, log, self.tls_cert)
             job.finished = _now()
             js.commit()
             return job

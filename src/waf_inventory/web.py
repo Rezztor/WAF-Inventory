@@ -18,7 +18,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
-from . import auth, f5, findings, jobs, remedies, report, sources, tls, tuning, vault
+from . import alerts, auth, f5, findings, jobs, remedies, report, sources, tls, tuning, vault
 from .models import (AuditLog, Endpoint, FindingState, Job, Listener, Source, SourceConfig, TuningDecision, WafPolicy, connect, get_setting,
                      put_setting)
 
@@ -74,6 +74,7 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
     tls_path = Path(tls_dir) if tls_dir else None
     jobs.interrupted(engine)
     runner = jobs.Runner(engine, cfg)
+    runner.tls_cert = tls_path / "cert.pem" if tls_path else None
     app.state.reload_tls = None
     if background:
         jobs.start_scheduler(engine, runner)
@@ -662,6 +663,59 @@ def create_app(db: str, cfg: dict | None = None, tls_dir: str | None = None, bac
         r = RedirectResponse("/login?changed=1", 303)
         r.delete_cookie(auth.COOKIE)
         return r
+
+    def alerts_page(request: Request, s: Session, status_code: int = 200, **ctx) -> HTMLResponse:
+        hints = {"weakened": "Blocking turned off, or a WAF policy taken away, since the previous collection.",
+                 "new_high": "High-severity findings that were not there before this collection.",
+                 "run_failed": "After the retry, if retries are on.",
+                 "expiring": f"Within {sources.WARN_DAYS} days: connection certificates and secrets, and the console's HTTPS certificate. "
+                             f"Repeated every {alerts.REMIND.days} days."}
+        return settings_page(request, s, "alerts", status_code, a=ctx.pop("a", None) or alerts.config(s), events=alerts.EVENTS,
+                             hints=hints, security=alerts.SECURITY, **ctx)
+
+    @app.get("/settings/alerts", response_class=HTMLResponse)
+    def settings_alerts(request: Request, msg: str = ""):
+        with session() as s:
+            return alerts_page(request, s, msg=MESSAGES.get(msg))
+
+    @app.post("/settings/alerts", response_class=HTMLResponse)
+    async def settings_alerts_save(request: Request):
+        f = await checked_form(request)
+        with session() as s:
+            old, errors = alerts.config(s), []
+            host, port = f.get("smtp_host", "").strip(), f.get("smtp_port", "").strip() or "587"
+            smtp = {"host": host, "port": int(port) if port.isdigit() else 0, "security": f.get("smtp_security", "starttls"),
+                    "username": f.get("smtp_username", "").strip(), "sender": f.get("smtp_sender", "").strip(),
+                    "to": [x for x in re.split(r"[\s,;]+", f.get("smtp_to", "")) if x]} if host else {}
+            new = {"events": [e for e in alerts.EVENTS if f"event_{e}" in f], "smtp": smtp, "base_url": f.get("base_url", "").strip(),
+                   "webhook": None if "webhook_remove" in f else old["webhook"], "smtp_password": old["smtp_password"] if host else None}
+            url = f.get("webhook", "").strip()
+            if url and not re.match(r"https?://[^\s/]+", url):
+                errors.append("The webhook URL must start with https:// or http://")
+            if new["base_url"] and not re.match(r"https?://[^\s/]+", new["base_url"]):
+                errors.append("The address of this console must start with https:// or http://")
+            if host and not (0 < smtp["port"] < 65536 and smtp["security"] in alerts.SECURITY):
+                errors.append("The SMTP port must be a number from 1 to 65535")
+            if host and not (smtp["sender"] and smtp["to"] and all("@" in x for x in [smtp["sender"], *smtp["to"]])):
+                errors.append("Email needs a From address and at least one To address")
+            try:
+                if url and not errors:
+                    new["webhook"] = vault.seal(url)
+                if host and f.get("smtp_password") and not errors:
+                    new["smtp_password"] = vault.seal(f["smtp_password"])
+            except vault.VaultError as e:
+                errors.append(str(e).capitalize())
+            if errors:
+                return alerts_page(request, s, 422, a=new, errors=errors)
+            put_setting(s, "alerts", new)
+            audit(s, request, "settings changed", "alerts", events=new["events"], channels=alerts.channels(new))
+            s.commit()
+            if f.get("action") != "test":
+                return RedirectResponse("/settings/alerts?msg=saved", 303)
+            results = alerts.send(new, [{"event": "test", "title": "Test message", "items": [f"Sent by {request.state.user} from Settings › Alerts"]}])
+            audit(s, request, "alert test sent", ok=[c for c, e in results if not e], failed=[c for c, e in results if e])
+            s.commit()
+            return alerts_page(request, s, results=results or [("alerts", "set a webhook or an email server first")])
 
     @app.get("/settings/transfer", response_class=HTMLResponse)
     def settings_transfer(request: Request, msg: str = ""):

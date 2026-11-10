@@ -31,6 +31,18 @@ def _fernet() -> MultiFernet:
                          "mount it as the master_key Docker secret or set WAF_INV_MASTER_KEY_FILE") from None
 
 
+def seal(value: str) -> str:
+    """Encrypt a secret that belongs to no connection (the alert webhook, the SMTP password)."""
+    return _fernet().encrypt(value.encode()).decode()
+
+
+def unseal(token: str) -> str:
+    try:
+        return _fernet().decrypt(token.encode()).decode()
+    except InvalidToken:
+        raise VaultError("a saved secret was encrypted with a different master key; enter it again") from None
+
+
 def put(sc: SourceConfig, kind: str, value: str, meta: dict | None = None) -> None:
     sec = next((x for x in sc.secrets if x.kind == kind), None)
     if sec is None:
